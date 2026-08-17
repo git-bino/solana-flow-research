@@ -103,6 +103,33 @@ CH_HOST = "localhost"
 CH_PORT = 8123
 CH_DATABASE = "flow"
 
+# --- pump.fun on-chain identifiers ---------------------------------------
+#: Bonding-curve program.  Verified empirically, not remembered: every sampled
+#: row of Dune's `pump_evt_tradeevent` and `pump_evt_createevent` carries this
+#: value in `evt_executing_account`.
+PUMP_PROGRAM_ID = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+
+#: The post-migration AMM runs under a *different* program.  Deliberately not
+#: listed: spec §0 puts post-migration AMM out of scope, and no id for it has
+#: been verified here.  Add one only after confirming it against data.
+
+#: Anchor event discriminators = first 8 bytes of sha256("event:<Name>").
+#: Computed locally; used to identify event payloads without decoding them.
+ANCHOR_EVENT_DISCRIMINATORS = {
+    "TradeEvent": "bddb7fd34ee661ee",
+    "CreateEvent": "1b72a94ddeeb6376",
+    "CompleteEvent": "5f72619cd42e9808",
+    "CompletePumpAmmMigrationEvent": "bde95db95c94ea94",
+    "SetParamsEvent": "dfc39ff63e308f83",
+    "CollectCreatorFeeEvent": "7a027f010ebf0caf",
+    "UpdateMayhemVirtualParamsEvent": "757be4b6a1a8dcd6",
+}
+
+#: sha256("anchor:event")[:8]; the same bytes reversed (e445a52e51cb9a1d) are
+#: what Anchor writes as the leading tag of an `emit_cpi!` self-CPI instruction.
+ANCHOR_EVENT_CPI_TAG = "1d9acb512ea545e4"
+ANCHOR_EVENT_CPI_TAG_LE = "e445a52e51cb9a1d"
+
 # --- Dune ----------------------------------------------------------------
 DUNE_API = "https://api.dune.com/api/v1"
 DUNE_NAMESPACE = "pumpdotfun_solana"   # confirmed by discovery, see report
