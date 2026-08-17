@@ -111,3 +111,58 @@ def test_perturbation_only_touches_the_future():
     for name, fn in PERTURBATIONS.items():
         corrupted = fn(events, T_INDEX)
         assert corrupted[: T_INDEX + 1] == events[: T_INDEX + 1], name
+
+
+# --- hardening for the f3/f8/f9 intra-slot defect (fixed 2026-08-18) --------
+
+def _one_slot_token(n: int = 5) -> list[Event]:
+    """`n` trades all sharing one slot, distinguished only by tx_index.
+
+    This is the shape that exposed the defect: a `RANGE ... CURRENT ROW` frame
+    ordered by slot treats all of them as peers, so a feature at the 3rd trade
+    silently absorbed the 4th and 5th.
+    """
+    base = _token(empty_slot_share=0.0)[:1][0]
+    return [
+        Event(mint="M", slot=500, tx_index=i, ix_index=0,
+              wallet=f"W{i}", is_buy=(i != 3),
+              lam=(i + 1) * 100_000_000, units=1_000_000 * (i + 1),
+              vsol=base.vsol, x0_lam=base.x0_lam, y0_units=base.y0_units)
+        for i in range(n)
+    ]
+
+
+@pytest.mark.parametrize("feature", ["n_buyers_12slot", "size_cv_25slot", "round_frac_25slot"])
+def test_same_slot_later_trades_do_not_enter_a_feature(feature):
+    """§6.1: at the 3rd trade of a slot, the 4th and 5th must be invisible.
+
+    Trades that executed EARLIER in the same slot are real history and must stay
+    in the window — this test pins that too, by checking the value also differs
+    from the one computed with only the current trade.
+    """
+    events = _one_slot_token(5)
+    fn = CAUSAL_FEATURES[feature]
+    at_third_full = fn(events, 2)
+    at_third_truncated = fn(events[:3], 2)
+    assert at_third_full == at_third_truncated, (
+        f"{feature} at the 3rd trade changed when later same-slot trades were dropped"
+    )
+    only_current = fn(events[2:3], 0)
+    assert at_third_full != only_current, (
+        f"{feature} ignored the earlier same-slot trades, which are real history"
+    )
+
+
+def test_n_buyers_counts_wallets_not_null_when_the_window_holds_a_sell():
+    """Regression for the NULL buyer (FIX 5b).
+
+    The old SQL built the count from `array_agg(if(is_buy, wallet))`, so every
+    sell contributed a NULL that `array_distinct` kept and `cardinality` counted.
+    Here trade index 3 is the sell, so a NULL-counting implementation returns 5
+    where the correct answer is 4.
+    """
+    events = _one_slot_token(5)
+    assert sum(1 for e in events if not e.is_buy) == 1
+    distinct_buyers = len({e.wallet for e in events if e.is_buy})
+    assert distinct_buyers == 4
+    assert CAUSAL_FEATURES["n_buyers_12slot"](events, 4) == 4

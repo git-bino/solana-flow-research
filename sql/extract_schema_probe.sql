@@ -73,15 +73,36 @@ flows AS (
            -- f3: distinct buyers over the trailing 12 slots.  count(DISTINCT) is
            -- not allowed as a window function in Trino, so the window collects
            -- the wallets and cardinality(array_distinct(...)) counts them.
-           cardinality(array_distinct(array_agg(if(is_buy, wallet)) OVER (
-               PARTITION BY mint ORDER BY slot
-               RANGE BETWEEN 12 PRECEDING AND CURRENT ROW))) AS n_buyers_12slot,
-           -- f8 / f9 over the trailing 25 slots
-           stddev_pop(sol_abs) OVER trail25 AS size_sd_25,
-           avg(sol_abs)        OVER trail25 AS size_mean_25,
-           avg(if(abs(sol_abs - 0.1) < 1e-9 OR abs(sol_abs - 0.5) < 1e-9
-                  OR abs(sol_abs - 1.0) < 1e-9, 1.0, 0.0)) OVER trail25 AS round_frac_25,
-           count(*) OVER trail25 AS n_trades_25,
+           -- FIX 4 (2026-08-18): f8 / f9 rebuilt as prefix-sum differences.
+           -- They used `RANGE BETWEEN 25 PRECEDING AND CURRENT ROW`, and with
+           -- `ORDER BY slot` that frame treats every row sharing the current slot
+           -- as a peer -- including trades that execute LATER in
+           -- (tx_index, ix_index) order.  That is intra-slot lookahead (§6.1);
+           -- measured on 88 rows, the peer rule reproduced the old f8 exactly
+           -- (88/88) while the causal rule matched 26-28/88.
+           --
+           -- The correct window is slot in (s-25, s] AND key <= this row.  Both
+           -- halves come free from the same construction f1 uses: the minuend is
+           -- a ROWS frame in full key order, so it cuts AT this row; the
+           -- subtrahend is a SUM over a RANGE frame ending at 25 PRECEDING, which
+           -- is peer-deterministic because summing all rows with slot <= s-25 does
+           -- not depend on their order.
+           --
+           -- CV and round_frac are expressible in sums, so nothing else is needed:
+           --   CV = sqrt(Sx2/n - (Sx/n)^2) / (Sx/n),  round_frac = Sround / n.
+           sum(sol_abs) OVER pfx
+             - coalesce(sum(sol_abs) OVER (PARTITION BY mint ORDER BY slot
+                 RANGE BETWEEN UNBOUNDED PRECEDING AND 25 PRECEDING), 0) AS sx_25,
+           sum(sol_abs * sol_abs) OVER pfx
+             - coalesce(sum(sol_abs * sol_abs) OVER (PARTITION BY mint ORDER BY slot
+                 RANGE BETWEEN UNBOUNDED PRECEDING AND 25 PRECEDING), 0) AS sx2_25,
+           sum(if(lam IN (100000000, 500000000, 1000000000), 1, 0)) OVER pfx
+             - coalesce(sum(if(lam IN (100000000, 500000000, 1000000000), 1, 0)) OVER (
+                 PARTITION BY mint ORDER BY slot
+                 RANGE BETWEEN UNBOUNDED PRECEDING AND 25 PRECEDING), 0) AS sround_25,
+           count(*) OVER pfx
+             - coalesce(count(*) OVER (PARTITION BY mint ORDER BY slot
+                 RANGE BETWEEN UNBOUNDED PRECEDING AND 25 PRECEDING), 0) AS n_trades_25,
            -- forward labels (§4.2): lookahead is intended here
            coalesce(sum(signed_lam) OVER (PARTITION BY mint ORDER BY slot
                RANGE BETWEEN 1 FOLLOWING AND 5 FOLLOWING), 0)  AS fwd_nf5_lam,
@@ -110,9 +131,7 @@ flows AS (
                RANGE BETWEEN 1 FOLLOWING AND 8 FOLLOWING), 0) AS v_lat8_lam
     FROM seqd
     WINDOW pfx AS (PARTITION BY mint ORDER BY slot, txi, ixi
-                   ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
-           trail25 AS (PARTITION BY mint ORDER BY slot
-                       RANGE BETWEEN 25 PRECEDING AND CURRENT ROW)
+                   ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
 ),
 -- §4.3 / §3c: the first future slot at which the trailing 3-slot flow is no
 -- longer positive.  One scalar reconstructs the whole hazard curve, provided
@@ -196,6 +215,55 @@ traj AS (
     FROM grid_nf3
     GROUP BY mint, seq
 ),
+-- FIX 5 (2026-08-18): f3 rebuilt as a join, and the NULL buyer removed.
+-- Distinct counting is not additive, so the prefix-sum trick that fixes f8/f9
+-- cannot express it.  Instead each burst joins back to its own token's events
+-- under `e.seq <= b.seq` -- seq is row_number over (slot, tx_index, ix_index),
+-- so that single predicate IS the causal cut, peers included or excluded exactly
+-- as they should be -- plus `e.slot > b.slot - 12` for the window.
+-- Only burst rows need f3, so the join is bounded by (bursts x window), not by
+-- (events x events).
+-- The NULL defect disappears with it: the old
+-- `cardinality(array_distinct(array_agg(if(is_buy, wallet)) OVER ...))` kept the
+-- NULL that `if(is_buy, wallet)` emits for every sell and counted it as a buyer,
+-- inflating n_buyers by exactly 1 whenever the window held a sell.  Here only
+-- buys enter the join at all.
+-- FIX 5b (2026-08-18): f3 via per-slot buyer sets + equi-joins.
+-- The first correct version joined bursts to events on `e.seq <= b.seq AND
+-- e.slot > b.slot - 12`.  Two inequalities give Trino no join key, so it
+-- degenerates to a nested loop: measured at 8.844 credits / 188s on 200 tokens,
+-- against 1.075 / 7.7s before the fix.  Correct but unaffordable at 90 days.
+--
+-- This version keeps the same semantics and restores equality joins.  Buyers are
+-- collected once per (mint, slot); the window (s-12, s] is then slots s-11..s-1,
+-- reached by expanding sequence(1,11) and joining on slot equality, plus the
+-- burst's own slot handled separately so the intra-slot cut `e.seq <= b.seq` is
+-- applied exactly where it matters -- and only there, over a single slot.
+slot_buyers AS (
+    SELECT mint, slot, array_agg(DISTINCT wallet) AS buyers
+    FROM seqd WHERE is_buy GROUP BY mint, slot
+),
+f3_prior AS (
+    SELECT b.mint, b.seq,
+           array_distinct(flatten(array_agg(coalesce(sb.buyers, ARRAY[])))) AS buyers
+    FROM bursts b
+    CROSS JOIN UNNEST(sequence(1, 11)) AS off(k)
+    LEFT JOIN slot_buyers sb ON sb.mint = b.mint AND sb.slot = b.slot - off.k
+    GROUP BY b.mint, b.seq
+),
+f3_same AS (
+    SELECT b.mint, b.seq, array_agg(DISTINCT e.wallet) AS buyers
+    FROM bursts b
+    JOIN seqd e ON e.mint = b.mint AND e.slot = b.slot AND e.seq <= b.seq AND e.is_buy
+    GROUP BY b.mint, b.seq
+),
+f3 AS (
+    SELECT p.mint, p.seq,
+           cardinality(array_distinct(
+               p.buyers || coalesce(sm.buyers, ARRAY[]))) AS n_buyers_12slot
+    FROM f3_prior p
+    LEFT JOIN f3_same sm ON sm.mint = p.mint AND sm.seq = p.seq
+),
 wstate AS (
     SELECT mint, wallet, seq,
            sum(if(is_buy, lam,   0))      OVER w AS buy_lam,
@@ -256,7 +324,7 @@ SELECT
     CAST(b.nf5_lam AS double)
       / nullif(CAST(b.nf25_lam AS double) / 5.0, 0)     AS accel,
     -- f3, f4, f5, f6
-    b.n_buyers_12slot,
+    coalesce(f3.n_buyers_12slot, 0)                     AS n_buyers_12slot,
     b.x_sol                                             AS depth_x,
     (b.x_sol - 30.0) / 85.0                             AS curve_progress,
     0                                                   AS burst_age_slot,
@@ -267,8 +335,10 @@ SELECT
                                                             -- undefined, so 0, matching src/oh_reference.py
     coalesce(o.oh_n_wallets, 0)                         AS oh_n_wallets,
     -- f8, f9
-    b.size_sd_25 / nullif(b.size_mean_25, 0)            AS size_cv_25slot,
-    b.round_frac_25                                     AS round_frac_25slot,
+    sqrt(greatest(b.sx2_25 / b.n_trades_25
+                  - power(b.sx_25 / b.n_trades_25, 2), 0))
+      / nullif(b.sx_25 / b.n_trades_25, 0)              AS size_cv_25slot,
+    CAST(b.sround_25 AS double) / b.n_trades_25         AS round_frac_25slot,
     b.n_trades_25                                       AS n_trades_25slot,
     -- §3d threshold flags on this same event (not independently sessionised)
     CAST(b.nf5_lam AS double)/1e9 >= greatest(3.0, 0.05 * b.x_sol) AS qual_005,
@@ -302,4 +372,5 @@ SELECT
 FROM bursts b
 LEFT JOIN oh o ON o.mint = b.mint AND o.seq = b.seq
 LEFT JOIN traj tr ON tr.mint = b.mint AND tr.seq = b.seq
+LEFT JOIN f3 ON f3.mint = b.mint AND f3.seq = b.seq
 ORDER BY b.mint, b.seq

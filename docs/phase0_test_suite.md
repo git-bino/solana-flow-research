@@ -117,6 +117,30 @@
 
 **Хамрах хүрээ:** f1 (net_flow_3/5/12/25slot), OH-ийн бүлэг, траектор, death_age, forward label-ууд бүгд **энэ согогоос ангид** — тэдгээр нь prefix sum-ийн зөрүү эсвэл slot-ын нягт тор дээр баригдсан. Зөвхөн f3, f8, f9 өртсөн.
 
+## Хүлээлтийн эх сурвалж (аудитын шаардлага)
+
+2026-08-18-нд эхний ажиллуулалтад 9 тест унасны **5 нь миний тестийн хүлээлтийн алдаа** байсан, кодын согог биш. Шинэ хүлээлт бүрийн эх сурвалж:
+
+| Тест | Шинэ хүлээлт | Эх сурвалж |
+|---|---|---|
+| `test_five_slot_flow_window_is_half_open_below` | `net_flow(events, 2, 5) == 2` (өмнө 1 гэж бичсэн) | **Гараар бодсон.** Event-үүд slot 100, 101, 105 дээр 1 SOL тус бүр. Цонх `(105−5, 105] = (100, 105]` → slot 100 гадна, slot 101 ба 105 дотор → 2 SOL. Конвенцийн эх сурвалж: spec v1.2 §4.1-ийн "5 slot гэдэг нь slot ∈ (s−5, s]". |
+| ↑ мөн | `net_flow(events, 2, 6) == 3` | Гараар: цонх `(99, 105]` → гурвуулаа дотор. |
+| `test_flow_is_summed_over_the_five_slot_window` | `_burst_keys(...) == [2]` (өмнө `[3]`) | **Гараар бодсон.** slot 10–13 дээр 1 SOL тус бүр, x=30 → босго `max(3, 0.10×30) = 3`. Slot 12 дээр цонх `(7,12]` = slot 10,11,12 = 3 SOL ≥ 3 → **эхний хангасан event нь индекс 2**. Индекс 3 нь 25 slot-ын чимээгүй цонх дотор тул шинэ burst нээхгүй. |
+| `test_sells_offset_buys_in_the_window` | Sell-ийг buy-аас **өмнө** тавьж `== []`, дараа нь ганц buy `== [0]` | **Учир шалтгаанаас.** Анхны бичилтэд sell нь buy-ийн дараа байсан: тэр үед индекс 0 дээр цонх аль хэдийн 3 SOL болж burst нээгдчихсэн байдаг. Дараа ирсэн sell өмнө гарсан trigger-ийг буцаах боломжгүй — энэ нь §6.1-ийн causality-ийн шууд үр дагавар, согог биш. |
+| `test_fully_sold_wallet_is_excluded_from_oh` | 1000 токен/SOL → **35,000,000 токен/SOL** | **Curve-ээс бодсон.** §1.1: `P(x) = x²/k`, `k = x₀·y₀ = 30 × 1.073e9 = 3.219e10`. x=30 дээр `P = 900/3.219e10 = 2.796×10⁻⁸ SOL/токен` → 1 SOL ≈ **35.8M токен**. Анхны 1000 токен/SOL нь cost basis-ыг бодит үнээс ~4 дэс дээгүүр тавьж, нэг ч wallet OH-д хэзээ ч орохгүй болгож байсан — тест буруу шалтгаанаар "PASS" болох эрсдэлтэй байв. |
+| `perturb_scale_sol` нь `vsol`-ыг мөн масштаблана | — | **Учир шалтгаанаас, тоо биш.** `lam`-ыг л өөрчилвөл гажуудсан ирээдүй нь x-ийн хувьд өөрчлөгдөхгүй үлдэж, §4.2-ийн үнэд суурилсан label-ууд хариу үзүүлэх зүйлгүй болно — эсрэг тест leakage-тай огт хамааралгүй шалтгаанаар унана. |
+
+**Аль нь ч кодын гаралтаас уншиж тохируулаагүй.** Гурав нь гараар бодсон арифметик, нэг нь curve-ийн томъёо, хоёр нь causality-ийн үндэслэл.
+
+## 2026-08-18 — засварын дараах байдал
+
+FIX 4 (f8/f9-ийн prefix-difference), FIX 5b (f3-ийн slot тутмын buyer set + equi-join) хийгдсэний дараа:
+
+- **f3/f8/f9-ийн parity 88/88 таарч, өмнөх 3 FAIL арилсан.**
+- Согогийг тодорхойлж байсан characterisation тест нь **regression тест** болж хувирсан (`test_intra_slot_lookahead_defect_is_gone`): peer-тэй дүрэм одоо SQL-ийг дахин үүсгэж чадахгүй байхыг шаардана.
+- **4 шинэ тест** нэмэгдсэн: нэг slot-д 5 арилжаа тавьж f3/f8/f9 бүрд 3 дахь арилжааны утга 4, 5 дахиас хамаарахгүйг батлах (3), ба NULL худалдан авагчийн regression (1).
+- **2 шинэ parity тест** нэмэгдсэн forward label-уудад: `fwd_net_flow_*` 88/88 PASS, харин `x_at_plus5/12` **УНАСАН** — `docs/phase0_window_audit.md`-ийн Олдвор 4.
+
 ## `pytest -q`-ийн бүтэн гаралт
 
 ```
@@ -226,4 +250,15 @@ FAILED tests/test_parity.py::test_trailing_window_features_match_sql[f9-round_fr
   FAILED tests/test_parity.py::test_trailing_window_features_match_sql[f3-n_buyers-n_buyers_12slot]
   FAILED tests/test_parity.py::test_trailing_window_features_match_sql[f8-size_cv-size_cv_25slot]
   FAILED tests/test_parity.py::test_trailing_window_features_match_sql[f9-round_frac-round_frac_25slot]
+```
+
+## `pytest -q` — 2026-08-18 засварын дараа
+
+```
+........................................................................ [ 69%]
+.....................FF.........                                         [100%]
+=========================== short test summary info ============================
+FAILED tests/test_parity.py::test_forward_price_labels_match[5-x_at_plus5] - ...
+FAILED tests/test_parity.py::test_forward_price_labels_match[12-x_at_plus12]
+2 failed, 102 passed in 1.15s
 ```

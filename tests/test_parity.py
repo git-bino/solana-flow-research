@@ -150,16 +150,19 @@ def test_trailing_window_features_match_sql(sides, feature, fn, column):
     assert checked > 0
 
 
-def test_sql_trailing_window_defect_is_characterised(sides):
-    """Pins the two defects above to 88/88 rows, so any change is visible.
+def test_intra_slot_lookahead_defect_is_gone(sides):
+    """Regression for the two defects fixed on 2026-08-18 (FIX 4 / FIX 5b).
 
-    Reproducing the SQL requires *both* peer inclusion and the NULL buyer; either
-    alone leaves it at 76% / 24%.  This test passes: it documents the current SQL
-    behaviour precisely rather than asserting it is correct.
+    Before the fix the SQL's f3/f8/f9 were reproduced *exactly* (88/88) by a rule
+    that (a) let every row sharing the current slot into the window, including
+    trades executing later in (tx_index, ix_index) order, and (b) counted the NULL
+    that `if(is_buy, wallet)` emits for sells as a distinct buyer.  This test
+    asserts the SQL no longer behaves that way: the peer rule must now MISS, and
+    the causal rule must match, which the parity tests above assert directly.
     """
     py, sq = sides
     events_by_token = _tokens()
-    peer_matches = null_matches = cv_peer_matches = total = 0
+    peer_null_matches = cv_peer_matches = total = 0
     for key in sorted(set(py) & set(sq)):
         i, token = _locate(events_by_token, key)
         slot = token[i].slot
@@ -170,8 +173,7 @@ def test_sql_trailing_window_defect_is_characterised(sides):
         got = sq[key]["n_buyers_12slot"]
         if got is not None:
             total += 1
-            peer_matches += buyers == got
-            null_matches += with_null == got
+            peer_null_matches += with_null == got
         cv = sq[key]["size_cv_25slot"]
         if cv is not None:
             sizes = [e.lam / 1e9 for e in peers25]
@@ -179,6 +181,47 @@ def test_sql_trailing_window_defect_is_characterised(sides):
             if mean:
                 cv_peer_matches += abs(pstdev(sizes) / mean - float(cv)) < 1e-9
     assert total == 88
-    assert null_matches == 88, "peer window + NULL-as-buyer should reproduce f3 exactly"
-    assert peer_matches < null_matches, "the NULL buyer is a separate, additive defect"
-    assert cv_peer_matches == 88, "peer window alone should reproduce f8 exactly"
+    assert peer_null_matches < 88, "f3 still reproduced by peer window + NULL buyer"
+    assert cv_peer_matches < 88, "f8 still reproduced by the peer window"
+
+
+@pytest.mark.parametrize("window,column", [(5, "fwd_net_flow_5slot"),
+                                           (12, "fwd_net_flow_12slot"),
+                                           (37, "fwd_net_flow_37slot")])
+def test_forward_flow_labels_match(sides, window, column):
+    """§4.2 forward flows use `RANGE 1 FOLLOWING ...`, excluding the current slot."""
+    from src.features_reference import fwd_net_flow
+    py, sq = sides
+    by_token = _tokens()
+    for key in sorted(set(py) & set(sq)):
+        i, token = _locate(by_token, key)
+        assert abs(fwd_net_flow(token, i, window) - Decimal(str(sq[key][column]))) < Decimal("1e-9"), \
+            f"{column} at {key}"
+
+
+@pytest.mark.parametrize("window,column", [(5, "x_at_plus5"), (12, "x_at_plus12"),
+                                           (37, "x_at_plus37")])
+def test_forward_price_labels_match(sides, window, column):
+    """THIS FAILS for τ = 5 and 12, and the failure is the fourth audit finding.
+
+    `x_at_plus*` is built as `last_value(vsol) OVER (ORDER BY slot RANGE BETWEEN
+    CURRENT ROW AND w FOLLOWING)`.  `CURRENT ROW` in a RANGE frame pulls in every
+    row sharing the current slot — including trades that execute later — so when
+    the forward window is empty the SQL returns a same-slot successor's reserve
+    where the reference returns this row's own.  Measured: 6/88 rows differ at
+    τ = 5, 4/88 at τ = 12, 0/88 at τ = 37, and 36/88 bursts have a forward window
+    ending on a multi-event slot, where `last_value` over ties is order-dependent
+    as well.
+
+    Two label families therefore disagree about what "future" means:
+    `fwd_net_flow_*` uses `1 FOLLOWING` and never sees the current slot, while
+    `x_at_plus*` sees all of it.  Which one §4.2 intends is a research decision,
+    so this is reported, not silently changed.
+    """
+    from src.features_reference import x_at_plus
+    py, sq = sides
+    by_token = _tokens()
+    for key in sorted(set(py) & set(sq)):
+        i, token = _locate(by_token, key)
+        assert abs(x_at_plus(token, i, window) - Decimal(str(sq[key][column]))) < Decimal("1e-9"), \
+            f"{column} at {key}"
