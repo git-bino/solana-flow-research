@@ -262,3 +262,11 @@ FAILED tests/test_parity.py::test_forward_price_labels_match[5-x_at_plus5] - ...
 FAILED tests/test_parity.py::test_forward_price_labels_match[12-x_at_plus12]
 2 failed, 102 passed in 1.15s
 ```
+
+## `pytest -q` — 2026-08-18, label хил + оновчлолын дараа
+
+```
+........................................................................ [ 60%]
+...............................................                          [100%]
+119 passed in 1.08s
+```

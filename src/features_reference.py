@@ -42,9 +42,19 @@ def _trailing(events: list[Event], i: int, window_slots: int,
 
 
 def _forward(events: list[Event], i: int, window_slots: int) -> list[Event]:
-    """Events strictly after i whose slot lies in [s + 1, s + w] — a label window."""
+    """Events after the trigger ROW whose slot is at most s + w — a label window.
+
+    The boundary is the trigger row, not the trigger slot (decisions.md,
+    2026-08-18): everything after it is future, including trades in the SAME slot
+    that execute later in (tx_index, ix_index) order.  `events[i + 1:]` is exactly
+    that cut, since the list is in key order.
+
+    The previous version required `e.slot > s`, which skipped same-slot
+    successors entirely and made `fwd_net_flow` blind to trades that
+    `x_at_plus` could already see.
+    """
     s = events[i].slot
-    return [e for e in events[i + 1:] if s < e.slot <= s + window_slots]
+    return [e for e in events[i + 1:] if e.slot <= s + window_slots]
 
 
 def net_flow(events: list[Event], i: int, window_slots: int) -> Decimal:
@@ -107,7 +117,12 @@ def fwd_net_flow(events: list[Event], i: int, window_slots: int) -> Decimal:
 
 
 def x_at_plus(events: list[Event], i: int, window_slots: int) -> Decimal:
-    """x at the last event inside the forward window, else x now.  spec §4.2."""
+    """x_post of the LAST row with slot ≤ s + w; the trigger's own if none follow.
+
+    Ties are resolved by key order, so within the final slot it is the last trade
+    that counts — the SQL side uses `max_by(vsol, seq)` for the same reason
+    (`last_value` over a RANGE frame is order-dependent among peers).  spec §4.2.
+    """
     window = _forward(events, i, window_slots)
     return Decimal((window[-1] if window else events[i]).vsol) / LAMPORTS
 

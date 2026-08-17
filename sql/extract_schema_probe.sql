@@ -104,18 +104,33 @@ flows AS (
              - coalesce(count(*) OVER (PARTITION BY mint ORDER BY slot
                  RANGE BETWEEN UNBOUNDED PRECEDING AND 25 PRECEDING), 0) AS n_trades_25,
            -- forward labels (§4.2): lookahead is intended here
+           -- FIX 6 (2026-08-18): the label boundary is the trigger ROW, not its slot.
+           -- `RANGE 1 FOLLOWING ...` starts at the next SLOT, so it skipped trades
+           -- sharing the trigger's slot that execute later -- trades `x_at_plus`
+           -- could already see.  Mirror of the trailing construction: sum over
+           -- everything with slot <= s+tau, minus the prefix through this row.
+           -- The minuend is peer-deterministic (a SUM over all rows at slot <= s+tau);
+           -- the subtrahend is a ROWS frame in full key order, so it cuts AT this row.
            coalesce(sum(signed_lam) OVER (PARTITION BY mint ORDER BY slot
-               RANGE BETWEEN 1 FOLLOWING AND 5 FOLLOWING), 0)  AS fwd_nf5_lam,
+               RANGE BETWEEN UNBOUNDED PRECEDING AND 5 FOLLOWING), 0)
+             - sum(signed_lam) OVER pfx                        AS fwd_nf5_lam,
            coalesce(sum(signed_lam) OVER (PARTITION BY mint ORDER BY slot
-               RANGE BETWEEN 1 FOLLOWING AND 12 FOLLOWING), 0) AS fwd_nf12_lam,
+               RANGE BETWEEN UNBOUNDED PRECEDING AND 12 FOLLOWING), 0)
+             - sum(signed_lam) OVER pfx                        AS fwd_nf12_lam,
            coalesce(sum(signed_lam) OVER (PARTITION BY mint ORDER BY slot
-               RANGE BETWEEN 1 FOLLOWING AND 37 FOLLOWING), 0) AS fwd_nf37_lam,
+               RANGE BETWEEN UNBOUNDED PRECEDING AND 37 FOLLOWING), 0)
+             - sum(signed_lam) OVER pfx                        AS fwd_nf37_lam,
            -- x at t+tau: last observed reserve inside the forward window
-           last_value(vsol) OVER (PARTITION BY mint ORDER BY slot
+           -- FIX 7: `last_value` over a RANGE frame picks an arbitrary peer when the
+           -- final slot holds several trades (36/88 bursts in the parity sample).
+           -- `max_by(vsol, seq)` names the tie-break explicitly: seq is unique in
+           -- (slot, tx_index, ix_index) order, so this is the LAST row with
+           -- slot <= s+tau -- the semantics decisions.md confirmed as correct.
+           max_by(vsol, seq) OVER (PARTITION BY mint ORDER BY slot
                RANGE BETWEEN CURRENT ROW AND 5 FOLLOWING)  AS vsol_p5,
-           last_value(vsol) OVER (PARTITION BY mint ORDER BY slot
+           max_by(vsol, seq) OVER (PARTITION BY mint ORDER BY slot
                RANGE BETWEEN CURRENT ROW AND 12 FOLLOWING) AS vsol_p12,
-           last_value(vsol) OVER (PARTITION BY mint ORDER BY slot
+           max_by(vsol, seq) OVER (PARTITION BY mint ORDER BY slot
                RANGE BETWEEN CURRENT ROW AND 37 FOLLOWING) AS vsol_p37,
            -- §5: V = flow landing during latency.  L1 = 1 slot, L2 = 1000ms
            -- ~ 2.5 slots (2 and 3 both kept), L3 = 3000ms ~ 7.5 slots (7 and 8).
@@ -239,9 +254,22 @@ traj AS (
 -- reached by expanding sequence(1,11) and joining on slot equality, plus the
 -- burst's own slot handled separately so the intra-slot cut `e.seq <= b.seq` is
 -- applied exactly where it matters -- and only there, over a single slot.
+-- OPTIMISATION (2026-08-18): build buyer sets only for the slots a burst can
+-- see.  Measured on the 1-day cohort: the unrestricted version built 759,387
+-- (mint, slot) buyer arrays where only 29,725 are ever probed -- 25.5x more rows
+-- than needed, 96.1% of the work discarded.  That is the cause of the 22.7s ->
+-- 116s regression the previous round measured.  Semantics are unchanged; the
+-- regression test compares f3 element by element across the change.
+needed_slots AS (
+    SELECT DISTINCT b.mint, b.slot - off.k AS slot
+    FROM bursts b CROSS JOIN UNNEST(sequence(0, 12)) AS off(k)
+),
 slot_buyers AS (
-    SELECT mint, slot, array_agg(DISTINCT wallet) AS buyers
-    FROM seqd WHERE is_buy GROUP BY mint, slot
+    SELECT e.mint, e.slot, array_agg(DISTINCT e.wallet) AS buyers
+    FROM seqd e
+    JOIN needed_slots n ON n.mint = e.mint AND n.slot = e.slot
+    WHERE e.is_buy
+    GROUP BY e.mint, e.slot
 ),
 f3_prior AS (
     SELECT b.mint, b.seq,
