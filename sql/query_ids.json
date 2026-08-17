@@ -15,5 +15,9 @@
   "quote_verify_q1": 8363093,
   "quote_verify_q2": 8363106,
   "quote_verify_q3": 8363116,
-  "quote_verify_q4": 8363117
+  "quote_verify_q4": 8363117,
+  "qfs_A_schema": 8363177,
+  "qfs_BD_discrimination": 8363178,
+  "qfs_C_transition_tokens": 8363179,
+  "qfs_E_chunk1_window": 8363180
 }
