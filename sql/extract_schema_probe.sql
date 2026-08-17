@@ -138,9 +138,26 @@ deaths AS (
 -- slot is 0 as specified -- note that the trailing 3-slot window evaluated at an
 -- eventless slot would generally be non-zero, so this is the specified quantity
 -- rather than the window's mathematical value.
-slot_nf3 AS (
-    SELECT mint, slot, max_by(nf3_lam, txi * 4096 + ixi) AS nf3_lam_last
-    FROM flows
+-- FIX 3 (2026-08-18): nf3 on a dense slot grid, as a rolling 3-slot SUM.
+-- The previous version took `max_by(nf3_lam, ...)` -- the trailing value carried
+-- by the LAST EVENT in that slot -- and 0 when the slot held no event.  Wrong on
+-- both counts: nf3(a) is the sum of flow over slots in (a-3, a], which is
+-- non-zero whenever a-1 or a-2 traded even if slot a itself is empty.
+--
+-- So the per-slot table now holds the SUM of signed flow in each slot, and the
+-- window is assembled on the dense grid as slot_flow(a) + slot_flow(a-1) +
+-- slot_flow(a-2).  Written as three equi-joins rather than one range join
+-- (`sf.slot > target - 3 AND sf.slot <= target`): a non-equi join over the
+-- 14,300 x 75 grid becomes a nested loop, while equality joins stay hash joins.
+--
+-- Two variants, because §4.3 does not say whether the window at a = 1, 2 may
+-- reach back past the burst slot:
+--   nf3_traj_75_incl_pre  window spans (a-3, a] unconditionally
+--   nf3_traj_75_excl_pre  only slots strictly after burst_slot contribute
+-- Both are produced; which one is primary is not decided here.
+slot_flow AS (
+    SELECT mint, slot, sum(signed_lam) AS flow_lam
+    FROM seqd
     GROUP BY mint, slot
 ),
 qual AS (
@@ -152,14 +169,32 @@ qual AS (
 bursts AS (
     SELECT * FROM qual WHERE prev_q_slot IS NULL OR slot - prev_q_slot > 25
 ),
+grid AS (
+    SELECT b.mint, b.seq, b.slot AS burst_slot, off.a, b.slot + off.a AS target_slot
+    FROM bursts b CROSS JOIN UNNEST(sequence(1, 75)) AS off(a)
+),
+grid_nf3 AS (
+    SELECT g.mint, g.seq, g.a,
+           coalesce(f0.flow_lam, 0) + coalesce(f1.flow_lam, 0)
+             + coalesce(f2.flow_lam, 0)                                  AS nf3_incl_lam,
+           if(g.target_slot     > g.burst_slot, coalesce(f0.flow_lam, 0), 0)
+             + if(g.target_slot - 1 > g.burst_slot, coalesce(f1.flow_lam, 0), 0)
+             + if(g.target_slot - 2 > g.burst_slot, coalesce(f2.flow_lam, 0), 0) AS nf3_excl_lam
+    FROM grid g
+    LEFT JOIN slot_flow f0 ON f0.mint = g.mint AND f0.slot = g.target_slot
+    LEFT JOIN slot_flow f1 ON f1.mint = g.mint AND f1.slot = g.target_slot - 1
+    LEFT JOIN slot_flow f2 ON f2.mint = g.mint AND f2.slot = g.target_slot - 2
+),
 traj AS (
-    SELECT b.mint, b.seq,
-           array_agg(coalesce(CAST(s.nf3_lam_last AS double) / 1e9, 0.0)
-                     ORDER BY off.a) AS nf3_traj_75
-    FROM bursts b
-    CROSS JOIN UNNEST(sequence(1, 75)) AS off(a)
-    LEFT JOIN slot_nf3 s ON s.mint = b.mint AND s.slot = b.slot + off.a
-    GROUP BY b.mint, b.seq
+    SELECT mint, seq,
+           array_agg(CAST(nf3_incl_lam AS double) / 1e9 ORDER BY a) AS nf3_traj_75_incl_pre,
+           array_agg(CAST(nf3_excl_lam AS double) / 1e9 ORDER BY a) AS nf3_traj_75_excl_pre,
+           min(if(nf3_incl_lam <= 0, a)) AS death_age_incl,
+           min(if(nf3_excl_lam <= 0, a)) AS death_age_excl,
+           count_if(nf3_incl_lam <> 0)   AS nonzero_incl,
+           count_if(nf3_excl_lam <> 0)   AS nonzero_excl
+    FROM grid_nf3
+    GROUP BY mint, seq
 ),
 wstate AS (
     SELECT mint, wallet, seq,
@@ -255,8 +290,15 @@ SELECT
     b.death_slot - b.slot                               AS death_age_slot,
     b.death_slot IS NULL                                AS hazard_censored,
     -- doubtful: only needed if "still positive" is not absorbing
-    tr.nf3_traj_75,
-    cardinality(tr.nf3_traj_75) AS traj_len
+    tr.nf3_traj_75_incl_pre,
+    tr.nf3_traj_75_excl_pre,
+    cardinality(tr.nf3_traj_75_incl_pre) AS traj_len,
+    tr.death_age_incl,
+    tr.death_age_excl,
+    tr.death_age_incl IS NULL AS censored_incl,
+    tr.death_age_excl IS NULL AS censored_excl,
+    tr.nonzero_incl,
+    tr.nonzero_excl
 FROM bursts b
 LEFT JOIN oh o ON o.mint = b.mint AND o.seq = b.seq
 LEFT JOIN traj tr ON tr.mint = b.mint AND tr.seq = b.seq

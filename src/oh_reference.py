@@ -159,6 +159,48 @@ HAZARD_SLOTS = 75
 NF3_WINDOW_SLOTS = 3
 
 
+def _slot_flow(events: list[Event]) -> dict[int, int]:
+    """Signed lamports traded in each slot — the base for a rolling nf3."""
+    out: dict[int, int] = {}
+    for ev in events:
+        out[ev.slot] = out.get(ev.slot, 0) + ev.signed_lam
+    return out
+
+
+def _trajectory_rolling(
+    slot_flow: dict[int, int], burst_slot: int, include_pre: bool
+) -> list[Decimal]:
+    """§4.3 trajectory as a rolling 3-slot sum on a dense slot grid.
+
+    nf3(a) sums the flow of slots in (a−3, a] — that is a, a−1, a−2 — so an empty
+    slot contributes nothing but does *not* reset the window.  The earlier
+    version read the trailing value of the last event in slot a and 0 when that
+    slot was empty, which zeroed the window whenever trading paused for one slot.
+
+    `include_pre` decides whether the window at a = 1, 2 may reach back past the
+    burst slot.  §4.3 does not say; both are produced and neither is chosen here.
+    """
+    out: list[Decimal] = []
+    for a in range(1, HAZARD_SLOTS + 1):
+        target = burst_slot + a
+        total = 0
+        for j in range(NF3_WINDOW_SLOTS):
+            slot = target - j
+            if not include_pre and slot <= burst_slot:
+                continue
+            total += slot_flow.get(slot, 0)
+        out.append(Decimal(total) / LAMPORTS)
+    return out
+
+
+def death_age(trajectory: list[Decimal]) -> int | None:
+    """Smallest a in 1..75 with nf3(a) <= 0; None means censored."""
+    for i, value in enumerate(trajectory, start=1):
+        if value <= 0:
+            return i
+    return None
+
+
 def _nf3_by_slot(events: list[Event]) -> dict[int, int]:
     """Per-slot net_flow_3slot in lamports: the value at the *last* event of each slot.
 
@@ -198,7 +240,8 @@ def replay_token(events: Iterable[Event]) -> Iterator[dict]:
         return
     state = TokenState(ordered[0].x0_lam, ordered[0].y0_units)
     burst_at = set(_burst_keys(ordered))
-    nf3 = _nf3_by_slot(ordered)
+    nf3 = _nf3_by_slot(ordered)          # legacy: last-event value per slot
+    slot_flow = _slot_flow(ordered)      # rolling-sum base
     for i, ev in enumerate(ordered):
         state.apply(ev)
         if i not in burst_at:
@@ -216,7 +259,12 @@ def replay_token(events: Iterable[Event]) -> Iterator[dict]:
             "oh_conc": oh_conc,
             "n_wallets": n_wallets,
             "n_wallets_total": len(state.wallets),
-            "nf3_traj_75": _trajectory(nf3, ev.slot),
+            # legacy, kept so the defect's effect stays measurable
+            "nf3_traj_75_legacy": _trajectory(nf3, ev.slot),
+            "nf3_traj_75_incl_pre": (incl := _trajectory_rolling(slot_flow, ev.slot, True)),
+            "nf3_traj_75_excl_pre": (excl := _trajectory_rolling(slot_flow, ev.slot, False)),
+            "death_age_incl": death_age(incl),
+            "death_age_excl": death_age(excl),
         }
 
 
