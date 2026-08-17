@@ -155,6 +155,42 @@ def _burst_keys(events: list[Event]) -> list[int]:
     return opened
 
 
+HAZARD_SLOTS = 75
+NF3_WINDOW_SLOTS = 3
+
+
+def _nf3_by_slot(events: list[Event]) -> dict[int, int]:
+    """Per-slot net_flow_3slot in lamports: the value at the *last* event of each slot.
+
+    Written independently of the SQL: a trailing deque over slot ∈ (s−3, s], and
+    later writes to the same slot simply overwrite earlier ones, which is what
+    "the value at that slot" means when a slot holds several trades.
+    """
+    out: dict[int, int] = {}
+    window: deque[Event] = deque()
+    running = 0
+    for ev in events:
+        window.append(ev)
+        running += ev.signed_lam
+        while window and window[0].slot <= ev.slot - NF3_WINDOW_SLOTS:
+            running -= window.popleft().signed_lam
+        out[ev.slot] = running
+    return out
+
+
+def _trajectory(nf3: dict[int, int], burst_slot: int) -> list[Decimal]:
+    """§4.3 trajectory, slot-indexed: element a-1 is net_flow_3slot at slot+a.
+
+    Exactly `HAZARD_SLOTS` long by construction; a slot with no event is 0, as
+    specified.  Note that is the *specified* quantity, not the trailing window's
+    mathematical value at an eventless slot, which would generally be non-zero.
+    """
+    return [
+        Decimal(nf3.get(burst_slot + a, 0)) / LAMPORTS
+        for a in range(1, HAZARD_SLOTS + 1)
+    ]
+
+
 def replay_token(events: Iterable[Event]) -> Iterator[dict]:
     """Yield one record per burst_start for a single token's event stream."""
     ordered = sorted(events, key=lambda e: e.key)
@@ -162,6 +198,7 @@ def replay_token(events: Iterable[Event]) -> Iterator[dict]:
         return
     state = TokenState(ordered[0].x0_lam, ordered[0].y0_units)
     burst_at = set(_burst_keys(ordered))
+    nf3 = _nf3_by_slot(ordered)
     for i, ev in enumerate(ordered):
         state.apply(ev)
         if i not in burst_at:
@@ -179,6 +216,7 @@ def replay_token(events: Iterable[Event]) -> Iterator[dict]:
             "oh_conc": oh_conc,
             "n_wallets": n_wallets,
             "n_wallets_total": len(state.wallets),
+            "nf3_traj_75": _trajectory(nf3, ev.slot),
         }
 
 

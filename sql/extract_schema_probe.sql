@@ -122,10 +122,26 @@ deaths AS (
            min(if(nf3_lam <= 0, slot)) OVER (
                PARTITION BY mint ORDER BY slot, txi, ixi
                ROWS BETWEEN 1 FOLLOWING AND UNBOUNDED FOLLOWING) AS death_slot,
-           array_agg(CAST(nf3_lam AS double) / 1e9) OVER (
-               PARTITION BY mint ORDER BY slot
-               RANGE BETWEEN 1 FOLLOWING AND 75 FOLLOWING) AS nf3_traj_75
+           CAST(NULL AS double) AS traj_placeholder
     FROM flows
+),
+-- FIX 1 (2026-08-18): the trajectory is now slot-indexed and fixed length.
+-- The previous `array_agg OVER (RANGE 1 FOLLOWING AND 75 FOLLOWING)` collected
+-- one element per EVENT inside those slots (length median 28.3, max 788), so the
+-- index carried no meaning.  Now: index a = 1..75 is the slot offset from the
+-- burst, the value is net_flow_3slot at slot s+a, and a slot with no event
+-- contributes 0.  Built by expanding sequence(1,75) per burst and LEFT JOINing
+-- the per-slot table, so cardinality is exactly 75 on every row (asserted below).
+--
+-- Two conventions worth naming: within a slot holding several events the value is
+-- the LAST one in (tx_index, ix_index) order (end-of-slot state), and an eventless
+-- slot is 0 as specified -- note that the trailing 3-slot window evaluated at an
+-- eventless slot would generally be non-zero, so this is the specified quantity
+-- rather than the window's mathematical value.
+slot_nf3 AS (
+    SELECT mint, slot, max_by(nf3_lam, txi * 4096 + ixi) AS nf3_lam_last
+    FROM flows
+    GROUP BY mint, slot
 ),
 qual AS (
     SELECT *,
@@ -135,6 +151,15 @@ qual AS (
 ),
 bursts AS (
     SELECT * FROM qual WHERE prev_q_slot IS NULL OR slot - prev_q_slot > 25
+),
+traj AS (
+    SELECT b.mint, b.seq,
+           array_agg(coalesce(CAST(s.nf3_lam_last AS double) / 1e9, 0.0)
+                     ORDER BY off.a) AS nf3_traj_75
+    FROM bursts b
+    CROSS JOIN UNNEST(sequence(1, 75)) AS off(a)
+    LEFT JOIN slot_nf3 s ON s.mint = b.mint AND s.slot = b.slot + off.a
+    GROUP BY b.mint, b.seq
 ),
 wstate AS (
     SELECT mint, wallet, seq,
@@ -203,7 +228,8 @@ SELECT
     -- f7, f7b
     coalesce(o.oh, 0)                                   AS oh,
     coalesce(o.oh, 0) / b.x_sol                         AS oh_ratio,
-    o.oh_top3 / nullif(o.oh, 0)                         AS oh_conc,
+    if(coalesce(o.oh, 0) > 0, o.oh_top3 / o.oh, 0)       AS oh_conc,  -- FIX 2: §1.2 says 0 <= OH_conc <= 1; with OH = 0 concentration is
+                                                            -- undefined, so 0, matching src/oh_reference.py
     coalesce(o.oh_n_wallets, 0)                         AS oh_n_wallets,
     -- f8, f9
     b.size_sd_25 / nullif(b.size_mean_25, 0)            AS size_cv_25slot,
@@ -229,7 +255,9 @@ SELECT
     b.death_slot - b.slot                               AS death_age_slot,
     b.death_slot IS NULL                                AS hazard_censored,
     -- doubtful: only needed if "still positive" is not absorbing
-    b.nf3_traj_75
+    tr.nf3_traj_75,
+    cardinality(tr.nf3_traj_75) AS traj_len
 FROM bursts b
 LEFT JOIN oh o ON o.mint = b.mint AND o.seq = b.seq
+LEFT JOIN traj tr ON tr.mint = b.mint AND tr.seq = b.seq
 ORDER BY b.mint, b.seq
