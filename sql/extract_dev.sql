@@ -36,12 +36,15 @@ WITH sel AS (
     FROM pumpdotfun_solana.pump_evt_createevent
     WHERE evt_block_date >= DATE '2026-05-10'
       AND evt_block_date <  DATE '2026-05-19'
-      -- DECISION 2026-08-18: `quote_mint` is NULL on 100% of rows before
-      -- 2026-05-21 -- the column and the first non-SOL quote appear on the very
-      -- same day -- so NULL is read as SOL and §2.2's 90-day window is kept.
-      -- Applied on BOTH sides; the trade-side filter has the same gap.
-      AND (quote_mint IS NULL
-           OR quote_mint = '11111111111111111111111111111111')
+      -- FIX 9 (2026-08-18): the universe filter is the DECLARED initial reserve,
+      -- not trade-side quote_mint.  Measured (docs/phase0_quote_filter_source.md):
+      -- createevent.virtual_sol_reserves is present on 100% of creates, takes
+      -- exactly two values, and separates the quote asset perfectly -- 229,192
+      -- trade-confirmed SOL tokens all at 30000000000, 5,475 trade-confirmed USDC
+      -- all at 4292000000, zero overlap.  It is readable at launch and needs no
+      -- trade data, so it works across the 3-hour window on 2026-05-21 where USDC
+      -- curves already existed with quote_mint still NULL.
+      AND CAST(virtual_sol_reserves AS bigint) = 30000000000
     GROUP BY mint
 ),
 guard AS (
@@ -64,14 +67,16 @@ ev AS (
            CAST(t.sol_amount   AS bigint) AS lam,
            CAST(t.token_amount AS bigint) AS units,
            CAST(t.virtual_sol_reserves AS bigint) AS vsol,
-           coalesce(t.mayhem_mode, false) AS mayhem
+           coalesce(t.mayhem_mode, false) AS mayhem,
+           t.quote_mint
     FROM pumpdotfun_solana.pump_evt_tradeevent t
     JOIN sel s ON t.mint = s.mint
     WHERE t.evt_block_date >= DATE '2026-05-10'
       AND t.evt_block_date <= DATE '2026-08-15'
       AND t.evt_block_time <  TIMESTAMP '2026-08-15 23:59:00'
-      AND (t.quote_mint IS NULL
-           OR t.quote_mint = '11111111111111111111111111111111')
+      -- No trade-side quote filter: the token is already restricted by the join to
+      -- `sel`, and quote_mint is constant within a token (0 of 248,657 tokens had
+      -- MIN <> MAX).  It is carried as a stratum column instead (§2.3).
 ),
 seqd AS (
     SELECT *,
@@ -246,9 +251,16 @@ grid_nf3 AS (
     LEFT JOIN slot_flow f2 ON f2.mint = g.mint AND f2.slot = g.target_slot - 2
 ),
 traj AS (
+    -- FIX 8 (2026-08-18): the excl_pre trajectory collapses to two scalars.
+    -- nf3(a) spans slots (s+a-3, s+a], i.e. s+a-2 .. s+a, so every slot in it is
+    -- strictly after the burst slot once a >= 3 and the two variants coincide
+    -- there.  Verified on chunk 1 rather than argued: 133,877 rows x 73 elements
+    -- = 9,773,021 comparisons, zero mismatches.  Only a = 1 and a = 2 carry
+    -- information, and they differ from incl_pre on 100% of rows.
     SELECT mint, seq,
            array_agg(CAST(nf3_incl_lam AS double) / 1e9 ORDER BY a) AS nf3_traj_75_incl_pre,
-           array_agg(CAST(nf3_excl_lam AS double) / 1e9 ORDER BY a) AS nf3_traj_75_excl_pre,
+           max(if(a = 1, CAST(nf3_excl_lam AS double) / 1e9)) AS nf3_excl_pre_1,
+           max(if(a = 2, CAST(nf3_excl_lam AS double) / 1e9)) AS nf3_excl_pre_2,
            min(if(nf3_incl_lam <= 0, a)) AS death_age_incl,
            min(if(nf3_excl_lam <= 0, a)) AS death_age_excl,
            count_if(nf3_incl_lam <> 0)   AS nonzero_incl,
@@ -365,6 +377,7 @@ SELECT
     date_diff('second', b.created_at, b.bt) / 60.0      AS age_min,
     date_trunc('minute', b.bt)                          AS minute_bucket,
     b.mayhem, b.mayhem_at_launch,
+    b.quote_mint,
     b.x0_lam, b.y0_units,
     b.wallet                                            AS trigger_wallet,
     b.is_buy                                            AS trigger_is_buy,
@@ -415,7 +428,8 @@ SELECT
     b.death_slot IS NULL                                AS hazard_censored,
     -- doubtful: only needed if "still positive" is not absorbing
     tr.nf3_traj_75_incl_pre,
-    tr.nf3_traj_75_excl_pre,
+    tr.nf3_excl_pre_1,
+    tr.nf3_excl_pre_2,
     cardinality(tr.nf3_traj_75_incl_pre) AS traj_len,
     tr.death_age_incl,
     tr.death_age_excl,

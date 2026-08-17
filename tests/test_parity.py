@@ -84,20 +84,52 @@ def test_oh_family_matches_to_12_places(sides, field):
         assert round(expected, OH_PLACES) == round(got, OH_PLACES), f"{field} at {key}"
 
 
-@pytest.mark.parametrize("variant", ["incl_pre", "excl_pre"])
-def test_trajectory_matches_element_by_element(sides, variant):
-    """All 75 slots of §4.3's trajectory, both window variants."""
+def test_trajectory_matches_element_by_element(sides):
+    """All 75 slots of §4.3's primary (incl_pre) trajectory."""
     py, sq = sides
-    column = f"nf3_traj_75_{variant}"
     compared = 0
     for key in sorted(set(py) & set(sq)):
-        left, right = py[key][column], sq[key][column]
+        left, right = py[key]["nf3_traj_75_incl_pre"], sq[key]["nf3_traj_75_incl_pre"]
         assert len(left) == 75 and len(right) == 75, f"length at {key}"
         for a, (expected, got) in enumerate(zip(left, right), start=1):
             assert round(expected, TRAJ_PLACES) == round(Decimal(str(got)), TRAJ_PLACES), \
-                f"{column} a={a} at {key}"
+                f"incl_pre a={a} at {key}"
             compared += 1
     assert compared == 88 * 75
+
+
+@pytest.mark.parametrize("a,column", [(1, "nf3_excl_pre_1"), (2, "nf3_excl_pre_2")])
+def test_excl_pre_scalars_match(sides, a, column):
+    """FIX 8: excl_pre survives as two scalars, a = 1 and a = 2.
+
+    The Python reference still computes the whole 75-element excl_pre list — it is
+    the reference, and staying richer than the extract is what lets this test
+    check the reduction rather than assume it.  Elements 3..75 are dropped because
+    they are identical to incl_pre by the window arithmetic, verified on chunk 1
+    over 9,773,021 element comparisons with zero mismatches.
+    """
+    py, sq = sides
+    for key in sorted(set(py) & set(sq)):
+        expected = py[key]["nf3_traj_75_excl_pre"][a - 1]
+        got = Decimal(str(sq[key][column]))
+        assert round(expected, TRAJ_PLACES) == round(got, TRAJ_PLACES), f"{column} at {key}"
+
+
+def test_excl_pre_tail_is_redundant_with_incl_pre(sides):
+    """The premise of FIX 8, re-asserted on the parity cohort itself."""
+    py, _ = sides
+    mismatches = 0
+    for key in py:
+        incl, excl = py[key]["nf3_traj_75_incl_pre"], py[key]["nf3_traj_75_excl_pre"]
+        mismatches += sum(1 for a in range(2, 75) if incl[a] != excl[a])
+    assert mismatches == 0
+
+
+def test_quote_mint_is_carried_as_a_stratum_column(sides):
+    """FIX 9: quote_mint is no longer a universe filter, but it is still exported."""
+    _, sq = sides
+    values = {r["quote_mint"] for r in sq.values()}
+    assert values == {"11111111111111111111111111111111"}, values
 
 
 @pytest.mark.parametrize("variant", ["incl", "excl"])
