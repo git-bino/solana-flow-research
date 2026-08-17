@@ -389,6 +389,247 @@ GROUP BY 1 ORDER BY 2 DESC
 """
 
 
+def _cohort_cte() -> str:
+    """The §0.1 probe cohort, reused by every measurement so they are comparable."""
+    frac = config.SAMPLE_SQL_FRACTION.format(mint="mint")
+    return f"""
+created AS (
+    SELECT mint,
+           min(evt_block_time) AS created_at,
+           {frac} AS frac,
+           bool_or(is_mayhem_mode) AS mayhem_at_launch
+    FROM {CREATES}
+    WHERE evt_block_date >= {_d(config.PROBE_START)}
+      AND evt_block_date <  {_d(config.PROBE_END)}
+      AND quote_mint = '{SOL_QUOTE_MINT}'
+    GROUP BY mint, 3
+)"""
+
+
+def sql_burst_tokens() -> str:
+    """Measurement 2 — what share of tokens and events the burst-producing tokens are.
+
+    A token has at least one burst exactly when it has at least one qualifying
+    event, so sessionisation is irrelevant here and the count is exact for §4.1's
+    flow condition.  The looser `max(net_flow_2s) >= 1 SOL` proxies are reported
+    alongside because a server-side pre-filter has to be expressible without
+    knowing x at every event.
+    """
+    return f"""
+WITH {_cohort_cte()},
+ev AS (
+    SELECT c.mint, t.evt_block_time AS block_time, t.is_buy,
+           CAST(t.sol_amount AS double) / 1e9 AS sol,
+           (CAST(t.virtual_sol_reserves AS double)
+              - (CASE WHEN t.is_buy THEN CAST(t.sol_amount AS double)
+                      ELSE -CAST(t.sol_amount AS double) END)) / 1e9 AS x_pre
+    FROM {TRADES} t
+    JOIN created c ON t.mint = c.mint
+    WHERE t.evt_block_date >= {_d(config.PROBE_START)}
+      AND t.evt_block_date <  {_d(config.PROBE_TAIL_END)}
+      AND t.quote_mint = '{SOL_QUOTE_MINT}'
+),
+flow AS (
+    SELECT mint, x_pre,
+           sum(CASE WHEN is_buy THEN sol ELSE -sol END) OVER (
+               PARTITION BY mint ORDER BY block_time
+               RANGE BETWEEN INTERVAL '2' SECOND PRECEDING AND CURRENT ROW) AS net_2s
+    FROM ev
+),
+tok AS (
+    SELECT mint, count(*) AS n, max(net_2s) AS max_net2s,
+           count_if(net_2s >= greatest(3.0, 0.10 * x_pre)) AS qual_events
+    FROM flow GROUP BY 1
+)
+SELECT count(*) AS tokens,
+       sum(n) AS events,
+       count_if(qual_events > 0) AS tokens_burst,
+       sum(CASE WHEN qual_events > 0 THEN n ELSE 0 END) AS events_burst_tokens,
+       count_if(max_net2s >= 0.5) AS tokens_net2s_05,
+       sum(CASE WHEN max_net2s >= 0.5 THEN n ELSE 0 END) AS events_net2s_05,
+       count_if(max_net2s >= 1.0) AS tokens_net2s_1,
+       sum(CASE WHEN max_net2s >= 1.0 THEN n ELSE 0 END) AS events_net2s_1,
+       count_if(max_net2s >= 3.0) AS tokens_net2s_3,
+       sum(CASE WHEN max_net2s >= 3.0 THEN n ELSE 0 END) AS events_net2s_3
+FROM tok
+"""
+
+
+def sql_mayhem_timing() -> str:
+    """Measurement 3a — where in a token's life mayhem mode switches on."""
+    return f"""
+WITH {_cohort_cte()},
+tr AS (
+    SELECT mint, evt_block_time AS bt, mayhem_mode
+    FROM {TRADES}
+    WHERE evt_block_date >= {_d(config.PROBE_START)}
+      AND evt_block_date <  {_d(config.PROBE_TAIL_END)}
+      AND quote_mint = '{SOL_QUOTE_MINT}'
+),
+onset AS (SELECT mint, min(bt) AS t_mayhem FROM tr WHERE mayhem_mode = true GROUP BY 1),
+tok AS (
+    SELECT c.mint, c.created_at, c.mayhem_at_launch, o.t_mayhem,
+           date_diff('second', c.created_at, o.t_mayhem) AS secs
+    FROM created c LEFT JOIN onset o ON c.mint = o.mint
+)
+SELECT count(*) AS tokens,
+       count_if(t_mayhem IS NOT NULL) AS tokens_mayhem,
+       count_if(mayhem_at_launch) AS mayhem_at_launch,
+       count_if(mayhem_at_launch AND t_mayhem IS NULL) AS flagged_but_never_traded_mayhem,
+       count_if(t_mayhem IS NOT NULL AND NOT mayhem_at_launch) AS mayhem_after_launch,
+       count_if(secs <= 0) AS onset_at_launch,
+       count_if(secs <= 60) AS onset_within_60s,
+       count_if(secs <= 300) AS onset_within_300s,
+       approx_percentile(CAST(secs AS double), 0.10) AS secs_p10,
+       approx_percentile(CAST(secs AS double), 0.25) AS secs_p25,
+       approx_percentile(CAST(secs AS double), 0.50) AS secs_p50,
+       approx_percentile(CAST(secs AS double), 0.75) AS secs_p75,
+       approx_percentile(CAST(secs AS double), 0.90) AS secs_p90,
+       approx_percentile(CAST(secs AS double), 0.99) AS secs_p99,
+       max(secs) AS secs_max
+FROM tok
+"""
+
+
+def sql_mayhem_activity() -> str:
+    """Measurement 3b — pre-onset activity, mayhem tokens vs the rest.
+
+    Measurement 3a established that mayhem is set *at launch* and never acquired
+    later, so a strictly pre-onset window has zero width for mayhem tokens — the
+    `*_pre` columns below are all zero by construction and are kept only to make
+    that explicit.  The `*_all` columns are the answerable question: are the two
+    populations differently active at all?  That comparison is descriptive, and it
+    cannot run the other way (activity causing mayhem) because the flag exists
+    before the token's first trade.
+    """
+    return f"""
+WITH {_cohort_cte()},
+tr AS (
+    SELECT mint, evt_block_time AS bt, mayhem_mode,
+           CAST(sol_amount AS double) / 1e9 AS sol
+    FROM {TRADES}
+    WHERE evt_block_date >= {_d(config.PROBE_START)}
+      AND evt_block_date <  {_d(config.PROBE_TAIL_END)}
+      AND quote_mint = '{SOL_QUOTE_MINT}'
+),
+onset AS (SELECT mint, min(bt) AS t_mayhem FROM tr WHERE mayhem_mode = true GROUP BY 1),
+tok AS (
+    SELECT c.mint, c.created_at, o.t_mayhem
+    FROM created c LEFT JOIN onset o ON c.mint = o.mint
+),
+pre AS (
+    SELECT k.mint,
+           k.t_mayhem IS NOT NULL AS is_mayhem,
+           count_if(date_diff('second', k.created_at, t.bt) < 60) AS n60_all,
+           count_if(date_diff('second', k.created_at, t.bt) < 300) AS n300_all,
+           sum(CASE WHEN date_diff('second', k.created_at, t.bt) < 60
+                    THEN t.sol ELSE 0 END) AS sol60_all,
+           count(*) AS n_lifetime,
+           sum(t.sol) AS sol_lifetime,
+           count_if(date_diff('second', k.created_at, t.bt) < 60
+                    AND (k.t_mayhem IS NULL OR t.bt < k.t_mayhem)) AS n60_pre
+    FROM tok k JOIN tr t ON t.mint = k.mint
+    GROUP BY 1, 2
+)
+SELECT is_mayhem,
+       count(*) AS tokens,
+       approx_percentile(CAST(n60_all AS double), 0.5) AS n60_p50,
+       approx_percentile(CAST(n60_all AS double), 0.9) AS n60_p90,
+       avg(CAST(n60_all AS double)) AS n60_mean,
+       approx_percentile(CAST(n300_all AS double), 0.5) AS n300_p50,
+       avg(CAST(n300_all AS double)) AS n300_mean,
+       approx_percentile(sol60_all, 0.5) AS sol60_p50,
+       avg(sol60_all) AS sol60_mean,
+       approx_percentile(CAST(n_lifetime AS double), 0.5) AS n_lifetime_p50,
+       avg(CAST(n_lifetime AS double)) AS n_lifetime_mean,
+       approx_percentile(sol_lifetime, 0.5) AS sol_lifetime_p50,
+       avg(CAST(n60_pre AS double)) AS n60_pre_mean
+FROM pre GROUP BY 1
+"""
+
+
+def sql_reserve_continuity() -> str:
+    """Measurement 4 — do the reported reserves form a consistent series?
+
+    Everything here is exact `decimal(38,0)` integer arithmetic, no floats: the
+    reserve deltas are compared to the reported amounts lamport for lamport, and
+    x*y is compared between consecutive trades exactly.  Three questions at once:
+
+      * does `vsol` move by exactly the reported `sol_amount` (net), or by
+        `sol_amount - fee - creator_fee` (gross)?  That is §0.3, answered by
+        arithmetic rather than by documentation.
+      * does x*y stay put between trades, and where it jumps, is the jump
+        concentrated in mayhem-mode rows?
+      * does each token's first trade start from x0 = 30 SOL?
+    """
+    dec = "CAST({} AS decimal(38,0))"
+    vsol, vtok = dec.format("t.virtual_sol_reserves"), dec.format("t.virtual_token_reserves")
+    sol, fee, cfee = (dec.format("t.sol_amount"), dec.format("coalesce(t.fee, 0)"),
+                      dec.format("coalesce(t.creator_fee, 0)"))
+    return f"""
+WITH {_cohort_cte()},
+ev AS (
+    SELECT c.mint, {vsol} AS vsol, {vtok} AS vtok,
+           {sol} AS sol, {fee} AS fee, {cfee} AS cfee,
+           t.is_buy, t.mayhem_mode,
+           t.evt_block_slot AS slot, t.evt_tx_index AS txi,
+           t.evt_outer_instruction_index AS oix,
+           coalesce(t.evt_inner_instruction_index, 0) AS iix
+    FROM {TRADES} t
+    JOIN created c ON t.mint = c.mint
+    WHERE t.evt_block_date >= {_d(config.PROBE_START)}
+      AND t.evt_block_date <  {_d(config.PROBE_TAIL_END)}
+      AND t.quote_mint = '{SOL_QUOTE_MINT}'
+),
+seq AS (
+    SELECT mint, vsol, vtok, sol, fee, cfee, is_buy, mayhem_mode,
+           vsol * vtok AS k,
+           lag(vsol) OVER w AS prev_vsol,
+           lag(vsol * vtok) OVER w AS prev_k,
+           row_number() OVER w AS rn
+    FROM ev
+    WINDOW w AS (PARTITION BY mint ORDER BY slot, txi, oix, iix)
+),
+d AS (
+    SELECT mint, mayhem_mode, rn,
+           vsol - prev_vsol AS delta,
+           CASE WHEN is_buy THEN sol ELSE -sol END AS signed_net,
+           CASE WHEN is_buy THEN sol - fee - cfee ELSE -(sol - fee - cfee) END AS signed_gross,
+           k, prev_k, vsol
+    FROM seq WHERE prev_vsol IS NOT NULL
+),
+first_ev AS (
+    SELECT count(*) AS n_first,
+           count_if(vsol - (CASE WHEN is_buy THEN sol ELSE -sol END) = CAST(30000000000 AS decimal(38,0)))
+               AS first_implies_x0_30_net,
+           count_if(vsol - (CASE WHEN is_buy THEN sol - fee - cfee ELSE -(sol - fee - cfee) END)
+                    = CAST(30000000000 AS decimal(38,0))) AS first_implies_x0_30_gross
+    FROM seq WHERE rn = 1
+),
+pairs AS (
+    SELECT count(*) AS n_pairs,
+           count_if(delta = signed_net) AS net_exact,
+           count_if(abs(delta - signed_net) <= 1) AS net_within_1,
+           count_if(delta = signed_gross) AS gross_exact,
+           count_if(abs(delta - signed_gross) <= 1) AS gross_within_1,
+           count_if(k = prev_k) AS k_unchanged,
+           count_if(k <> prev_k) AS k_changed,
+           count_if(k <> prev_k AND mayhem_mode = true) AS k_changed_mayhem,
+           count_if(mayhem_mode = true) AS mayhem_pairs,
+           count_if(mayhem_mode = true AND delta = signed_net) AS mayhem_net_exact,
+           count_if(mayhem_mode <> true AND delta = signed_net) AS plain_net_exact,
+           count_if(mayhem_mode <> true) AS plain_pairs,
+           approx_percentile(abs(CAST(delta - signed_net AS double)), 0.5) AS resid_net_p50,
+           approx_percentile(abs(CAST(delta - signed_net AS double)), 0.99) AS resid_net_p99,
+           approx_percentile(abs(CAST(k - prev_k AS double) / CAST(prev_k AS double)), 0.99)
+               AS k_rel_change_p99,
+           max(abs(CAST(k - prev_k AS double) / CAST(prev_k AS double))) AS k_rel_change_max
+    FROM d
+)
+SELECT * FROM pairs CROSS JOIN first_ev
+"""
+
+
 # --- commands -------------------------------------------------------------
 
 def cmd_raw(args: argparse.Namespace) -> None:
@@ -561,10 +802,108 @@ def _print_estimate(est: dict) -> None:
           f"(2,500 credits minus a 400 reserve): {est['affordable_rate']:.3%}")
 
 
+def sql_reserve_detail() -> str:
+    """Measurement 4b — the curve identity itself, split by mayhem mode.
+
+    Measurement 4 showed the SOL side chains exactly for non-mayhem trades, but
+    left two things unmeasured: whether the *token* side moves by exactly
+    `token_amount`, and where the bulk of the x*y drift sits (its p99 could be
+    entirely the mayhem fifth).  Both are exact integer comparisons; x*y is
+    compared as a ratio in double, which resolves ~1e-16 and so cannot manufacture
+    the drift it measures.
+    """
+    dec = "CAST({} AS decimal(38,0))"
+    return f"""
+WITH {_cohort_cte()},
+ev AS (
+    SELECT c.mint,
+           {dec.format('t.virtual_sol_reserves')} AS vsol,
+           {dec.format('t.virtual_token_reserves')} AS vtok,
+           {dec.format('t.sol_amount')} AS sol,
+           {dec.format('t.token_amount')} AS tok,
+           t.is_buy, t.mayhem_mode,
+           t.evt_block_slot AS slot, t.evt_tx_index AS txi,
+           t.evt_outer_instruction_index AS oix,
+           coalesce(t.evt_inner_instruction_index, 0) AS iix
+    FROM {TRADES} t
+    JOIN created c ON t.mint = c.mint
+    WHERE t.evt_block_date >= {_d(config.PROBE_START)}
+      AND t.evt_block_date <  {_d(config.PROBE_TAIL_END)}
+      AND t.quote_mint = '{SOL_QUOTE_MINT}'
+),
+seq AS (
+    SELECT mint, vsol, vtok, sol, tok, is_buy,
+           coalesce(mayhem_mode, false) AS mayhem,
+           lag(vsol) OVER w AS prev_vsol,
+           lag(vtok) OVER w AS prev_vtok
+    FROM ev
+    WINDOW w AS (PARTITION BY mint ORDER BY slot, txi, oix, iix)
+),
+d AS (
+    SELECT mayhem,
+           vsol - prev_vsol AS dsol,
+           vtok - prev_vtok AS dtok,
+           CASE WHEN is_buy THEN sol ELSE -sol END AS want_dsol,
+           CASE WHEN is_buy THEN -tok ELSE tok END AS want_dtok,
+           abs(CAST(vsol * vtok AS double) / CAST(prev_vsol * prev_vtok AS double) - 1.0) AS k_rel
+    FROM seq WHERE prev_vsol IS NOT NULL
+)
+SELECT mayhem,
+       count(*) AS pairs,
+       count_if(dsol = want_dsol) AS sol_side_exact,
+       count_if(dtok = want_dtok) AS token_side_exact,
+       count_if(dsol = want_dsol AND dtok = want_dtok) AS both_sides_exact,
+       approx_percentile(k_rel, 0.50) AS k_rel_p50,
+       approx_percentile(k_rel, 0.90) AS k_rel_p90,
+       approx_percentile(k_rel, 0.99) AS k_rel_p99,
+       max(k_rel) AS k_rel_max,
+       count_if(k_rel < 1e-12) AS k_stable_1e12,
+       count_if(k_rel < 1e-9) AS k_stable_1e9,
+       count_if(k_rel < 1e-6) AS k_stable_1e6,
+       count_if(k_rel < 1e-3) AS k_stable_1e3
+FROM d GROUP BY 1
+"""
+
+
+MEASUREMENTS = {
+    "burst_tokens": sql_burst_tokens,
+    "mayhem_timing": sql_mayhem_timing,
+    "mayhem_activity": sql_mayhem_activity,
+    "reserve_continuity": sql_reserve_continuity,
+    "reserve_detail": sql_reserve_detail,
+}
+
+
+def cmd_measure(args: argparse.Namespace) -> None:
+    """Run the named aggregate measurements and append them to a JSON record.
+
+    Each returns a handful of rows, so retrieval is free in practice and the only
+    cost is compute.  Results accumulate in results/phase0_measurements.json.
+    """
+    out = config.RESULTS / "phase0_measurements.json"
+    store = json.loads(out.read_text()) if out.exists() else {}
+    dune = Dune()
+    for name in (args.only or MEASUREMENTS):
+        if name not in MEASUREMENTS:
+            raise SystemExit(f"unknown measurement {name}; have {list(MEASUREMENTS)}")
+        meta = dune.run(f"phase0_{name}", MEASUREMENTS[name](), max_seconds=args.cap)
+        rows = list(dune.rows(meta["execution_id"], max_rows=100))
+        store[name] = {"rows": rows, "credits": meta["execution_cost_credits"],
+                       "execution_id": meta["execution_id"]}
+        print(f"    -> {json.dumps(rows, default=str)[:600]}")
+    store["credits_total_this_run"] = dune.total_credits()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(store, indent=2, default=str) + "\n")
+    print(f"\n-> {out}   ({dune.total_credits():.2f} credits this run)")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("discover")
+    mea = sub.add_parser("measure", help="run aggregate measurements (cheap)")
+    mea.add_argument("--only", nargs="*", help=f"subset of {list(MEASUREMENTS)}")
+    mea.add_argument("--cap", type=int, default=420)
     est = sub.add_parser("estimate")
     est.add_argument("--cap", type=int, default=420, help="seconds before cancelling")
     raw = sub.add_parser("raw")
@@ -573,7 +912,8 @@ def main() -> None:
     raw.add_argument("--cap", type=int, default=120)
     raw.add_argument("--limit", type=int, default=30)
     args = parser.parse_args()
-    {"discover": cmd_discover, "estimate": cmd_estimate, "raw": cmd_raw}[args.cmd](args)
+    {"discover": cmd_discover, "estimate": cmd_estimate, "raw": cmd_raw,
+     "measure": cmd_measure}[args.cmd](args)
 
 
 if __name__ == "__main__":
