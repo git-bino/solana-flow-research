@@ -1,7 +1,9 @@
-data/
+data/*
+!data/cache/
 results/
 __pycache__/
 *.pyc
 .env
 .ipynb_checkpoints/
 .venv/
+.DS_Store
