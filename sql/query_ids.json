@@ -11,5 +11,9 @@
   "phase0_mayhem_activity": 8358407,
   "phase0_reserve_continuity": 8358415,
   "phase0_reserve_detail": 8358419,
-  "phase0_extract_dev_chunk01": 8362893
+  "phase0_extract_dev_chunk01": 8362893,
+  "quote_verify_q1": 8363093,
+  "quote_verify_q2": 8363106,
+  "quote_verify_q3": 8363116,
+  "quote_verify_q4": 8363117
 }
