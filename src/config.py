@@ -33,6 +33,18 @@ HOLDOUT_START = T_START + timedelta(
     days=int((Decimal(_span_days) * (1 - HOLDOUT_FRACTION)).to_integral_value())
 )
 
+# --- §0.1 size probe -----------------------------------------------------
+# A 3-day *launch cohort* inside the dev period, followed for 7 days so each
+# token's history is complete.  Deliberately mid-window: not a boundary, not the
+# holdout.
+PROBE_START = datetime(2026, 6, 1, tzinfo=timezone.utc)
+PROBE_END = datetime(2026, 6, 4, tzinfo=timezone.utc)
+PROBE_TAIL_END = PROBE_END + EVENT_TAIL
+PROBE_DAYS = (PROBE_END - PROBE_START).days
+
+#: Sample rates priced in the §0.1 report (the chosen one is decided afterwards).
+CANDIDATE_RATES = (Decimal("0.10"), Decimal("0.20"), Decimal("0.40"))
+
 # --- sampling (spec §2.2) ------------------------------------------------
 # Random *by token*, via mint hash.  Never by activity, volume, lifetime or
 # migration status — those re-introduce survivorship.  Set once in Phase 0.1
@@ -41,15 +53,27 @@ SAMPLE_RATE: Decimal | None = None   # None = keep the full universe
 
 SAMPLE_SALT = "solana-flow-research/phase0"
 
+#: The sampling filter must run *inside* Dune SQL — filtering client-side would
+#: pay the export cost of the whole universe and save nothing.  This expression is
+#: the exact SQL twin of `mint_hash_fraction` below: first 4 bytes of
+#: sha256("salt:mint") over 2^32.  Kept as one string so the two can never drift;
+#: `ingest_dune estimate` verifies them against each other on real mints.
+SAMPLE_SQL_FRACTION = (
+    "from_base(substr(lower(to_hex(sha256(to_utf8(concat('"
+    + SAMPLE_SALT
+    + ":', {mint}))))), 1, 8), 16) / 4294967296.0"
+)
+
 
 def mint_hash_fraction(mint: str) -> Decimal:
     """Deterministic uniform-in-[0,1) value from a mint address.
 
-    Salted so the same rule can be re-derived elsewhere but does not coincide
-    with any hash the venue itself uses.
+    Salted so the rule can be re-derived anywhere but coincides with no hash the
+    venue itself uses.  Four bytes, not eight, so that `SAMPLE_SQL_FRACTION` can
+    reproduce it exactly with Trino's `from_base` (bigint) arithmetic.
     """
     digest = hashlib.sha256(f"{SAMPLE_SALT}:{mint}".encode()).digest()
-    return Decimal(int.from_bytes(digest[:8], "big")) / Decimal(2**64)
+    return Decimal(int.from_bytes(digest[:4], "big")) / Decimal(2**32)
 
 
 def in_sample(mint: str, rate: Decimal | None = ...) -> bool:  # type: ignore[assignment]

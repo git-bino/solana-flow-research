@@ -38,6 +38,7 @@ import clickhouse_connect
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src import config  # noqa: E402
+from src.curve import K_UNITS  # noqa: E402
 
 CH_CONFIG = config.CH_DATA / "config.xml"
 
@@ -66,7 +67,11 @@ CONFIG_XML = """<clickhouse>
 EVENT_DDL = f"""
 CREATE TABLE IF NOT EXISTS {config.CH_DATABASE}.event
 (
-    token_mint    LowCardinality(String),
+    token_mint    String,       -- not LowCardinality: the 90-day universe has
+                                -- millions of distinct mints, far past the
+                                -- ~100k where a dictionary still helps.  Sorted
+                                -- ORDER BY prefix compresses it to the same
+                                -- 93 bytes/row (measured, `rowsize`).
     slot          UInt64,
     block_time    DateTime64(3, 'UTC'),
     tx_index      UInt32,
@@ -212,6 +217,93 @@ def cmd_sanity(args: argparse.Namespace) -> None:
         print(f"  {day}  {n:>12,}  tokens={tok:>8,}")
 
 
+def measure_row_bytes(
+    n_rows: int = 400_000, n_tokens: int = 8_000, n_wallets: int = 60_000, seed: int = 3
+) -> dict[str, float]:
+    """Measure ClickHouse bytes per event row, for the §0.1 disk estimate.
+
+    Synthetic rows are shaped like the real thing where shape drives compression:
+    mints repeat (a token has many trades), wallets are drawn power-law so a few
+    addresses dominate, slots and timestamps increase, and amounts are lognormal.
+    Random base58 identifiers still compress worse than real ones, so the result
+    is an upper bound on bytes per row rather than a point estimate.
+    """
+    import numpy as np
+    import pandas as pd
+
+    rng = np.random.default_rng(seed)
+    alphabet = np.array(list("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"))
+
+    def b58(n: int) -> np.ndarray:
+        chars = rng.choice(alphabet, size=(n, 44))
+        return np.array(["".join(row) for row in chars])
+
+    mints, wallets = b58(n_tokens), b58(n_wallets)
+    # tokens: a few very active, most nearly dead — mirrors pump.fun
+    token_weight = rng.pareto(1.2, n_tokens) + 1
+    mint_idx = rng.choice(n_tokens, size=n_rows, p=token_weight / token_weight.sum())
+    wallet_weight = rng.pareto(1.5, n_wallets) + 1
+    wallet_idx = rng.choice(n_wallets, size=n_rows, p=wallet_weight / wallet_weight.sum())
+
+    slot = np.sort(rng.integers(360_000_000, 360_900_000, size=n_rows))
+    sol_lamports = np.clip(rng.lognormal(19.0, 1.6, n_rows), 1e6, 3e11).astype(np.uint64)
+    token_units = np.clip(rng.lognormal(33.0, 1.5, n_rows), 1e6, 1e15).astype(np.uint64)
+    vsol = np.clip(30e9 + np.cumsum(rng.normal(2e7, 3e8, n_rows)), 30e9, 115e9).astype(np.uint64)
+
+    y_units = np.floor(float(K_UNITS) / vsol.astype(float)).astype(np.uint64)
+
+    frame = pd.DataFrame({
+        "token_mint": mints[mint_idx],
+        "slot": slot.astype(np.uint64),
+        "block_time": pd.to_datetime(slot * 400, unit="ms", utc=True),
+        "tx_index": rng.integers(0, 2500, n_rows).astype(np.uint32),
+        "ix_index": rng.integers(0, 4, n_rows).astype(np.uint32),
+        "tx_id": "",
+        "wallet": wallets[wallet_idx],
+        "side": np.where(rng.random(n_rows) < 0.62, "buy", "sell"),
+        "sol_amount": sol_lamports / 1e9,
+        "token_amount": token_units / 1e6,
+        "sol_lamports": sol_lamports,
+        "token_units": token_units,
+        "x_pre": vsol / 1e9,
+        "x_post": vsol / 1e9,
+        "x_pre_lamports": vsol,
+        "x_post_lamports": vsol,
+        "y_pre_units": y_units,
+        "y_post_units": y_units,
+        "vsol_post": vsol,
+        "vtoken_post": y_units,
+        "fee_lamports": (sol_lamports // 100),
+        "split": "dev",
+    })
+
+    ch = client()
+    ch.command(f"DROP TABLE IF EXISTS {config.CH_DATABASE}.event_size_probe")
+    ch.command(EVENT_DDL.replace(".event", ".event_size_probe"))
+    ch.insert_df("event_size_probe", frame)
+    ch.command(f"OPTIMIZE TABLE {config.CH_DATABASE}.event_size_probe FINAL")
+    compressed, uncompressed, rows = ch.query(
+        "SELECT sum(data_compressed_bytes), sum(data_uncompressed_bytes), sum(rows) "
+        "FROM system.parts WHERE database=%(d)s AND table='event_size_probe' AND active",
+        parameters={"d": config.CH_DATABASE},
+    ).result_rows[0]
+    ch.command(f"DROP TABLE {config.CH_DATABASE}.event_size_probe")
+    return {
+        "rows": float(rows),
+        "compressed_bytes_per_row": compressed / rows,
+        "uncompressed_bytes_per_row": uncompressed / rows,
+        "compression_ratio": uncompressed / compressed,
+    }
+
+
+def cmd_rowsize(args: argparse.Namespace) -> None:
+    m = measure_row_bytes()
+    print(f"measured on {m['rows']:,.0f} synthetic rows:")
+    print(f"  compressed   {m['compressed_bytes_per_row']:.1f} bytes/row")
+    print(f"  uncompressed {m['uncompressed_bytes_per_row']:.1f} bytes/row")
+    print(f"  ratio        {m['compression_ratio']:.2f}x")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -220,10 +312,12 @@ def main() -> None:
     load = sub.add_parser("load")
     load.add_argument("--path", help="directory of parquet files (default data/dev)")
     sub.add_parser("sanity")
+    sub.add_parser("rowsize", help="measure compressed bytes/row for the §0.1 estimate")
     args = parser.parse_args()
     if not hasattr(args, "path"):
         args.path = None
-    {"start": cmd_start, "schema": cmd_schema, "load": cmd_load, "sanity": cmd_sanity}[args.cmd](args)
+    {"start": cmd_start, "schema": cmd_schema, "load": cmd_load,
+     "sanity": cmd_sanity, "rowsize": cmd_rowsize}[args.cmd](args)
 
 
 if __name__ == "__main__":
