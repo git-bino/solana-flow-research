@@ -36,7 +36,12 @@ WITH sel AS (
     FROM pumpdotfun_solana.pump_evt_createevent
     WHERE evt_block_date >= DATE '2026-05-10'
       AND evt_block_date <  DATE '2026-05-19'
-      AND quote_mint = '11111111111111111111111111111111'
+      -- DECISION 2026-08-18: `quote_mint` is NULL on 100% of rows before
+      -- 2026-05-21 -- the column and the first non-SOL quote appear on the very
+      -- same day -- so NULL is read as SOL and §2.2's 90-day window is kept.
+      -- Applied on BOTH sides; the trade-side filter has the same gap.
+      AND (quote_mint IS NULL
+           OR quote_mint = '11111111111111111111111111111111')
     GROUP BY mint
 ),
 guard AS (
@@ -65,7 +70,8 @@ ev AS (
     WHERE t.evt_block_date >= DATE '2026-05-10'
       AND t.evt_block_date <= DATE '2026-08-15'
       AND t.evt_block_time <  TIMESTAMP '2026-08-15 23:59:00'
-      AND t.quote_mint = '11111111111111111111111111111111'
+      AND (t.quote_mint IS NULL
+           OR t.quote_mint = '11111111111111111111111111111111')
 ),
 seqd AS (
     SELECT *,
