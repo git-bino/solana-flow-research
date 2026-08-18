@@ -199,16 +199,32 @@ def latency_cost(v_sol: Decimal, x_sol: Decimal) -> Decimal:
     return (1 + Decimal(v_sol) / Decimal(x_sol)) ** 2 - 1
 
 
-def round_trip_breakeven(
+def breakeven_legacy(
     v_sol: Decimal, q_sol: Decimal, x_sol: Decimal, fees: Decimal = Decimal("0.02")
 ) -> Decimal:
-    """BE = (1+V/x)^2 (1+q/x)^2 (1+fees) − 1 — spec §1.1."""
+    """DEPRECATED. BE = (1+V/x)^2 (1+q/x)^2 (1+fees) − 1 — spec §1.1 as written.
+
+    **This formula is wrong and is kept only for the audit trail.**  An external
+    audit (decisions.md, 2026-08-19) showed it charges own price impact twice:
+    with V = 0 and fees = 0 it returns (1+q/x)^2 − 1 > 0, while buying q SOL and
+    selling it straight back moves the reserve x -> x+q -> x and returns exactly
+    zero.  `src/cost_model.py` derives the breakeven from the exact reserve path
+    instead; nothing outside the tests calls this.
+
+    Not removed, and not repaired: kill criterion (ii) and the Phase 3a report
+    were computed with it, so it has to stay readable to date those numbers.
+    """
     x_sol = Decimal(x_sol)
     return (
         (1 + Decimal(v_sol) / x_sol) ** 2
         * (1 + Decimal(q_sol) / x_sol) ** 2
         * (1 + Decimal(fees))
     ) - 1
+
+
+#: Deprecated alias.  `tests/test_curve.py` pins the legacy formula's behaviour and
+#: is left untouched, so the pre-rename name has to keep resolving.
+round_trip_breakeven = breakeven_legacy
 
 
 def curve_progress(x_sol: Decimal) -> Decimal:
