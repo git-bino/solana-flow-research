@@ -1,0 +1,18 @@
+{
+  "chunk": "05",
+  "rows_returned": 109534,
+  "n_columns": 60,
+  "exec_secs": 102.15267300605774,
+  "fetch_secs": 33.46109890937805,
+  "api_requests": 5,
+  "execution_cost_credits": 37.774264706,
+  "result_bytes": 122075364,
+  "credits_before": 1748.16,
+  "credits_after_exec": 1785.935,
+  "credits_after_fetch": 2043.935,
+  "credits_included": 2500,
+  "total_credits": 295.77499999999986,
+  "retrieval_credits": 258.0,
+  "remaining_after": 456.06500000000005,
+  "parquet_bytes": 47012976
+}

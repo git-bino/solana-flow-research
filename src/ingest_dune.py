@@ -100,13 +100,20 @@ class Dune:
         Dune's side — and re-running from scratch would have paid for it twice.
         Timeouts are therefore retried like 429s; only the request is repeated,
         never the execution.
+
+        `ChunkedEncodingError` is in the list for the same reason and at a higher
+        price: a truncated response body killed chunk 6's export after Dune had
+        already billed the first 25k-row page, and every page has to be paid for
+        again on a fresh fetch.  Callers that page results should also persist
+        each page as it arrives — see the note in `rows`.
         """
         last: Exception | None = None
         for attempt in range(6):
             try:
                 resp = self.session.request(
                     method, f"{config.DUNE_API}{path}", timeout=120, **kw)
-            except (requests.Timeout, requests.ConnectionError) as exc:
+            except (requests.Timeout, requests.ConnectionError,
+                    requests.exceptions.ChunkedEncodingError) as exc:
                 last = exc
                 time.sleep(2 ** attempt)
                 continue
@@ -212,7 +219,13 @@ class Dune:
 
     def rows(self, eid: str, page: int = 25_000, max_rows: int | None = None
              ) -> Iterator[dict[str, Any]]:
-        """Stream rows of a completed execution.  Every row retrieved costs credits."""
+        """Stream rows of a completed execution.  Every row retrieved costs credits.
+
+        Because each page is billed on arrival and re-fetching pays again, a
+        caller exporting a large result should write pages to disk as they come
+        in and resume from the row count already on disk, rather than holding
+        them in memory where a mid-export failure discards paid-for data.
+        """
         offset = 0
         while True:
             payload = self._request(
