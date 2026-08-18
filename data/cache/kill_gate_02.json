@@ -1,0 +1,29 @@
+{
+  "chunk": "02",
+  "launch_from": "2026-05-19",
+  "launch_to": "2026-05-28",
+  "credits": 26.988000000000284,
+  "remaining_after": 67.03699999999981,
+  "execution_ms": 44613,
+  "result": {
+    "a_pairs_mayhem": 3831342,
+    "a_pairs_nonmayhem": 15381582,
+    "a_sol_match": 15381582,
+    "a_sol_match_mayhem": 1512687,
+    "a_tok_match": 15381582,
+    "a_tok_match_mayhem": 3831342,
+    "b_max": 3.333436328838425e-11,
+    "b_p50": 9.596246192246118e-12,
+    "b_p99": 3.256807401952957e-11,
+    "c_distinct_x0": 1,
+    "c_first_at_30sol": 218096,
+    "c_tokens_with_trades": 218096,
+    "events_scanned": 19431020,
+    "p_max": 35765.666655936664,
+    "p_p50": 6.6749731654902845e-09,
+    "p_p99": 0.0018179729491466547,
+    "p_trades": 15381582,
+    "pairs_total": 19212924,
+    "tokens_in_window": 238500
+  }
+}
