@@ -1,0 +1,61 @@
+2dfe1ff08c8ef9ff6754b7b2ac085a949e94e0e0 2026-08-17 15:43:07 +0800 spec v1.0: initial pre-registered design
+47a930a633d23374d4ce2ffd75af4f6f6f199e9a 2026-08-17 15:43:19 +0800 add pre-registration discipline files (empty)
+dd86d39931992d6bcf239906ec263a5d0b0b43bf 2026-08-17 15:45:33 +0800 spec v1.1: primary cell, two-part Phase 3 kill, power analysis, stratified hazard, exit asymmetry, embargo
+1c615970e8ea48e58a30e455031569ae2a51450a 2026-08-17 15:47:24 +0800 add Codex code-review prompt
+e5a6bcf9a94aab63c9b485fd5a12398c1fe88a0e 2026-08-17 17:02:06 +0800 Phase 0: pre-register prompt, curve math, storage and validation scaffolding
+bca94f9fecc7e7043f1c6cc238b69265345c8b98 2026-08-17 17:04:44 +0800 Phase 0: record pre-registration decisions (window, holdout, ordering, units)
+e05eb62cabea6aa3bdb33b88e1358c1b55923897 2026-08-17 18:49:21 +0800 Phase 0.1: size, credit and disk estimate from a 3-day launch cohort
+bc6e8256c2cf762fd405839912d203de8bb7bfad 2026-08-17 19:26:08 +0800 Phase 0: four measurements (burst-token share, mayhem timing, reserve series)
+fbc14ec3f0c19a2a074aea959e8846e72a3cae62 2026-08-17 20:19:06 +0800 spec v1.2: empirical y0 and fees, NET sol_amount, direct reserve read, slot-based windows, mayhem as stratum, Check 1 split into 1a/1b/1c, Codex removed
+b3f9a92bc8f135dd172a6141a267d1e0be97e581 2026-08-17 21:06:47 +0800 Phase 0.1: BigQuery dry_run measurement of the Solana public dataset
+e01df93d4061bb0c15a3108f30f4411308ac646b 2026-08-17 21:12:20 +0800 decide: BigQuery becomes primary source; pre-register ordering-key rule
+fb91b001ce5619037694db01858b10edcfc9c21c 2026-08-17 21:20:43 +0800 Phase 0: BigQuery ordering-key probe - `index` is transaction-scoped
+25569fb6340986d46290e0df3967fae9257dee7a 2026-08-17 21:27:16 +0800 decide: Instructions path rejected (no inner ix); pre-register log_messages thresholds
+9391ab51d6c85c0a01ef12e781a1306e8cb982b5 2026-08-17 21:58:28 +0800 decide: Instructions path rejected (no inner ix); pre-register log_messages thresholds
+bc0befd0a20bbb92d0c9ff739c19b664f417e843 2026-08-17 22:08:16 +0800 Phase 0: BigQuery log_messages path probe - the column is empty
+f6b5837fbd3023f0d09161058dd9925fbc91bdd8 2026-08-17 22:14:47 +0800 decide: BigQuery excluded (no inner instructions in dataset); quarantine balance_changes path
+70ba3a8e4b75b562ed4abaa5ea931c26127bfa49 2026-08-17 22:18:51 +0800 pre-register: age-cutoff selection rule (before burst inventory)
+4963cc9232f9b8705f397297f9bf1e4bdcd4f545 2026-08-17 22:39:31 +0800 Phase 0: burst inventory - age x mayhem cross-tab
+fcd13dda0c5a72b327d336c652cd3e51f6ed80ac 2026-08-17 22:50:40 +0800 decide: age cutoff N=5 (rule applied, purpose failed); flag scan-vs-export cost split
+aa178e72e2d3a7225c6b2bd21fe644331e72c960 2026-08-17 23:17:20 +0800 Phase 0: measure Dune's cost structure - scan vs export separated
+2681661962b5363909ab304c881154f7365ff071 2026-08-17 23:22:37 +0800 measure: Dune cost function; burst-only export fits Free; pre-register conditional reversal of N=5
+85e166f36c5f5d677ff1c913159ce45d23e95f99 2026-08-17 23:52:28 +0800 Phase 0: prove f7 (OH_ratio) is expressible in Dune SQL, matching a Python reference
+47950e43f7f80611260bf6e5b13796d06e42f180 2026-08-17 23:57:19 +0800 decide: OH feasible in Dune SQL (88/88 parity); burst-only architecture; N=5 reverted to inf; holdout split at extract
+41738818b315a753fd4f47cdd5d174335fe21607 2026-08-18 00:16:56 +0800 Phase 0: full extract-schema inventory and width measurement
+b48c1354c98f36dae158de544c03a4417e2d7848 2026-08-18 00:25:46 +0800 decide: export trajectory (discipline over credits); slot-index required; fix oh_conc and chunk to 30d
+66b88a6513c4a050fc3b05d93735ccb5b0eb0c84 2026-08-18 00:44:26 +0800 Phase 0: fix the trajectory index and oh_conc NULL, then re-measure
+4ec1c3f3e99ad81eba95dc098f9f8449fe903df2 2026-08-18 00:54:49 +0800 verify: trajectory parity 6600 elements; found nf3 empty-slot defect; log slot conventions
+7e3494804fccc03a20933a558cd8ae1d1b523a6b 2026-08-18 01:15:53 +0800 Phase 0: fix nf3's empty-slot defect and recompute the hazard diagnostics
+0cb90274a9ed16b53ceda8bad6d56f116accbc71 2026-08-18 01:29:18 +0800 decide: incl_pre window convention for nf3 (definitional consistency); log diagnostic exposure
+a699ab2f9c05b01406b7344d34a67aabeb29f25a 2026-08-18 01:56:11 +0800 Phase 0: write the §8.2 requirement-8 test suite - 94 tests, 91 pass, 3 fail
+b7370901137f05e0a8ee33335ed829a0c34677b5 2026-08-18 02:00:05 +0800 found: intra-slot lookahead in f3/f8/f9 + NULL buyer bug; test suite justified empirically
+0c1b57cdd0cb431203f66eb3cd4e6f85245a1229 2026-08-18 02:19:27 +0800 Phase 0: fix f3/f8/f9 intra-slot lookahead and the NULL buyer; audit all 35 windows
+248dcc6a5a69ba81e848fdf661287878a8dae0e2 2026-08-18 02:25:40 +0800 decide: label boundary is the trigger row (Finding 4 resolved); f3/f8/f9 lookahead fixed
+8d6def77e362b9de80cadaf49f29ff516e308f4d 2026-08-18 02:38:09 +0800 Phase 0: align label boundaries to the trigger row; optimise f3 (116s -> 22.1s)
+e3c853a89dee0d6fd997b4c6b7f4f77ccfbb35a4 2026-08-18 02:41:44 +0800 decide: trajectory boundary is correct as-is; 10-day chunks; pre-register extract execution rule
+09c04961ff640ae4f847ccded8b798d724dc1b9d 2026-08-18 03:02:51 +0800 spec v1.3: burst-only architecture, row-level boundaries, N=inf, holdout split at extract
+11aed399bd693bae781fd6a0207b75ec55a4a82c 2026-08-18 03:13:54 +0800 Phase 0 extract chunk 1: stopped - quote_mint is NULL before 2026-05-21
+fded7e2dfdf85e3cca82b6fbf580fc94f71f01cb 2026-08-18 03:26:02 +0800 Phase 0 extract: dev chunk 01 complete - 133,877 burst rows, 481.94 credits
+42a15f183ece7db45d3698829edcff5b691d0a45 2026-08-18 03:31:42 +0800 decide: quote_mint NULL=SOL pending verification; excl_pre array reduced to 2 scalars; chunk 1 done
+a7366cebcff184feb0f1167ad49b55995e98302c 2026-08-18 03:41:45 +0800 Phase 0: verify the quote_mint NULL = SOL reading - PASS
+cb3b03e51f36a4f5667ba41d273429d8fddd9d90 2026-08-18 03:46:43 +0800 verify: quote_mint NULL=SOL passes; pre-register createevent-based quote filter rule
+140b5ff5ce71395db2260ca5416ce23b9fbf19fd 2026-08-18 03:53:21 +0800 Phase 0: createevent's declared initial reserve determines the quote asset
+33a13f21c4f0fb1955216420f5a918691d45a871 2026-08-18 03:57:05 +0800 verify: createevent x0 discriminates quote perfectly; chunk 1 clean; correct decoder-lag claim
+d0750c0855e86d7ad3441e2e18df8cbda247f8e9 2026-08-18 04:06:48 +0800 Phase 0: reduce the excl_pre trajectory to two scalars; move the quote filter to declared x0
+cfab62e4606e3f4cd8c7911aefdb906743cf4afb 2026-08-18 04:10:05 +0800 verify: schema reduction proven on 9.77M elements; quote discrimination holds in chunk 2 window
+011c5d08697e448675d896c8b0fb5c3050912e82 2026-08-18 04:30:10 +0800 extract chunk 2: align chunk 1 to the authoritative schema (v3), run chunk 2
+865e403f1a89ee19c36f5a9d086ec732586be304 2026-08-18 04:34:23 +0800 record: chunk 2 done (305 cr); pre-register sequential stop rule for chunks 3-7
+8556d00dfe6aff6470e7ebc82f68e4efd26c9c8b 2026-08-18 13:52:27 +0800 extract chunks 3 and 4, with the mechanical stop rule
+0f978aed358ca6e8bcb92d9738ab216a83d5718e 2026-08-18 14:16:42 +0800 record: chunks 3-4 done; correct the phantom execution anomaly; declare canonical schema fix at load
+aca086d9ae7bd73bac000d91ebfd5bdc5f74bbb1 2026-08-18 14:52:18 +0800 extract chunk 5, chunk 6 execution, and the canonical extract schema
+3497aa21b4afe139d148431d065c649e20206645 2026-08-18 14:59:14 +0800 complete chunk 6; mechanical rule stops before chunk 7
+3c6cc4327ce28315d3c67f11672fd71e6e2bbbea 2026-08-18 15:05:36 +0800 record: dev extract complete (667,809 rows, chunk 7 becomes embargo); canonical schema locked
+342790d7af4ceb24ee9c6328445c0282abdf3f1a 2026-08-18 15:19:05 +0800 kill gate: windows 1-2 PASS; select windows 4,6; pre-register 3,5 for Aug-31; log mayhem structure
+0a5281d042cc64619e88552855b212eef50b3741 2026-08-18 15:31:32 +0800 Phase 0 KILL gate: 1a/1b/1c pass on all four measured windows
+dd5c32366f04efb6ca45ce323c0785f2cda9d17b 2026-08-18 15:43:57 +0800 KILL GATE PASSED: 43.2M pairs, zero mismatches; open question on k for mayhem P(t)
+35c069359cb3b83245fd46633110f42003dc010f 2026-08-18 15:59:02 +0800 establish the source of k in P(t): launch k, in both SQL and Python
+c8a35ba649a01a979e2c478c546d78cc86cb5f97 2026-08-19 02:36:54 +0800 found: P(t) uses launch k; spec 1.1/1.2 conflict; non-mayhem unaffected, mayhem patch deferred to Aug-31
+6c73002a2c6c1c5dcdb3e4f74d8348a5b266d356 2026-08-19 03:04:28 +0800 load the 667,809 burst rows into ClickHouse as flow.burst
+9f3c4a56be531e7e6062e34c6730475bcce56667 2026-08-19 03:09:30 +0800 load: 667,809 rows into ClickHouse; mandate UTC in all queries; harden attribution rule
+e301c958643add4dd30f820f7085ef3585007b02 2026-08-19 03:35:55 +0800 Phase 3a: baseline distribution and power analysis -- power >= 80%
+0cbbd096bdfaacc1c21520727c86897f69067950 2026-08-19 03:51:03 +0800 3a: power sufficient (MDE 0.126 vs threshold 1.634); lock criterion (ii) V=p75, ceil slots, row-level deciles; audit before 3b
