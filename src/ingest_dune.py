@@ -93,15 +93,30 @@ class Dune:
         self.usage: list[dict[str, Any]] = []
 
     def _request(self, method: str, path: str, **kw) -> Any:
+        """One API call, retrying rate limits and transient network faults.
+
+        A read timeout on a `/execution/{id}/status` poll used to abort the whole
+        run (chunk 3, 2026-08-18) even though the execution was still running on
+        Dune's side — and re-running from scratch would have paid for it twice.
+        Timeouts are therefore retried like 429s; only the request is repeated,
+        never the execution.
+        """
+        last: Exception | None = None
         for attempt in range(6):
-            resp = self.session.request(method, f"{config.DUNE_API}{path}", timeout=120, **kw)
+            try:
+                resp = self.session.request(
+                    method, f"{config.DUNE_API}{path}", timeout=120, **kw)
+            except (requests.Timeout, requests.ConnectionError) as exc:
+                last = exc
+                time.sleep(2 ** attempt)
+                continue
             if resp.status_code == 429:
                 time.sleep(2 ** attempt)
                 continue
             if not resp.ok:
                 raise RuntimeError(f"{method} {path} -> {resp.status_code}: {resp.text[:400]}")
             return resp.json()
-        raise RuntimeError(f"{method} {path}: rate limited after retries")
+        raise RuntimeError(f"{method} {path}: giving up after retries ({last})")
 
     def ensure_query(self, name: str, sql: str) -> int:
         """Return a saved-query id for `sql`, creating or updating as needed.

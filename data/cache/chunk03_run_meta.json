@@ -1,0 +1,18 @@
+{
+  "chunk": "03",
+  "rows_returned": 107563,
+  "n_columns": 60,
+  "exec_ms_dune": 193247,
+  "fetch_secs": 33.972737073898315,
+  "api_requests": 5,
+  "execution_cost_credits": 45.320147059,
+  "result_bytes": 120428306,
+  "credits_before": 1174.944,
+  "credits_after_exec": 1220.264,
+  "credits_after_fetch": 1476.264,
+  "credits_included": 2500,
+  "total_credits": 301.31999999999994,
+  "retrieval_credits": 256.0,
+  "remaining_after": 1023.7360000000001,
+  "parquet_bytes": 46505115
+}
