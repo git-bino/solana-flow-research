@@ -1,0 +1,13 @@
+{
+  "chunk": "06",
+  "rows_returned": 113906,
+  "n_columns": 60,
+  "fetch_secs": 42.7745361328125,
+  "api_requests_this_run": 5,
+  "credits_before_refetch": 2136.975,
+  "credits_after": 2405.975,
+  "refetch_credits": 269.0,
+  "credits_included": 2500,
+  "remaining_after": 94.02500000000009,
+  "parquet_bytes": 48815739
+}
