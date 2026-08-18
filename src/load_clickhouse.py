@@ -1,27 +1,17 @@
-"""ClickHouse storage — spec §2.3, §2.4.
+"""ClickHouse storage for the §2.3 burst rows — spec v1.3, §2.3 / §2.4.
 
   python -m src.load_clickhouse start     # launch the local server
-  python -m src.load_clickhouse schema    # create database + tables
-  python -m src.load_clickhouse load      # load data/dev/*.parquet
-  python -m src.load_clickhouse sanity    # §2.4 sanity counts
+  python -m src.load_clickhouse schema    # create flow.burst from sql/clickhouse_burst.sql
+  python -m src.load_clickhouse load      # load data/extract/dev_chunk*.parquet
+  python -m src.load_clickhouse verify    # post-load asserts (see `verify`)
 
-Tables follow §2.3 exactly and then add columns the spec's checks require but its
-schema block does not name:
+v1.3 replaced the event-level design with burst rows computed inside Dune, so
+this module no longer stores raw trades: one row per burst_start, 60 columns,
+exactly `src/extract_schema.py`'s CANON.  Every parquet goes through
+`load_chunk()`, so the per-chunk type drift (quote_mint, death_age_*) is
+normalised on the way in and never reaches the table.
 
-  ix_index                     intra-transaction ordering (see decisions.md);
-                               (slot, tx_index) alone cannot order two trades
-                               that share a transaction, which bundles routinely do
-  sol_lamports / token_units   the exact integer amounts.  §2.3 asks for DOUBLE
-                               `sol_amount`, which is kept, but reconstruction runs
-                               on integers so it carries no rounding at all
-  vsol_post / vtoken_post      on-chain virtual reserves after the trade: the
-                               ground truth that validation checks 1, 2 and 5
-                               compare the reconstruction against
-  fee_lamports                 fee as reported by the source, when it reports one
-                               (§0.3 evidence)
-  split                        'dev' — the holdout never enters this database
-
-The holdout is not loaded here at all.  `load` refuses any file under
+The holdout is not loaded here at all.  `iter_chunks` refuses any path under
 data/holdout/ (spec §6.1): the seal is enforced in code, not by convention.
 """
 
@@ -34,290 +24,240 @@ import time
 from pathlib import Path
 
 import clickhouse_connect
+import pyarrow as pa
+import pyarrow.compute as pc
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src import config  # noqa: E402
-from src.curve import K_UNITS  # noqa: E402
+from src.extract_schema import CANON, KEY, load_chunk  # noqa: E402
 
-CH_CONFIG = config.CH_DATA / "config.xml"
+DDL = Path(__file__).resolve().parent.parent / "sql" / "clickhouse_burst.sql"
+EXTRACT = config.DATA / "extract"
+HOLDOUT = config.DATA / "holdout"
+TABLE = "flow.burst"
 
-CONFIG_XML = """<clickhouse>
-    <logger><level>warning</level>
-        <log>{path}/logs/server.log</log>
-        <errorlog>{path}/logs/error.log</errorlog></logger>
-    <http_port>{http}</http_port>
-    <tcp_port>9000</tcp_port>
-    <listen_host>127.0.0.1</listen_host>
-    <path>{path}/store/</path>
-    <tmp_path>{path}/tmp/</tmp_path>
-    <user_files_path>{path}/user_files/</user_files_path>
-    <mark_cache_size>536870912</mark_cache_size>
-    <users>
-        <default><password></password>
-            <networks><ip>127.0.0.1</ip></networks>
-            <profile>default</profile><quota>default</quota>
-            <access_management>1</access_management></default>
-    </users>
-    <profiles><default><max_memory_usage>8000000000</max_memory_usage></default></profiles>
-    <quotas><default><interval><duration>3600</duration></interval></default></quotas>
-</clickhouse>
-"""
+#: The dev chunks, in launch-window order.  chunk 1 is the v3 rewrite: same rows
+#: as v2, reordered to the canonical column order (docs/phase0_extract_run.md).
+CHUNKS = ["dev_chunk01_v3.parquet"] + [f"dev_chunk{n:02d}.parquet" for n in range(2, 7)]
 
-EVENT_DDL = f"""
-CREATE TABLE IF NOT EXISTS {config.CH_DATABASE}.event
-(
-    token_mint    String,       -- not LowCardinality: the 90-day universe has
-                                -- millions of distinct mints, far past the
-                                -- ~100k where a dictionary still helps.  Sorted
-                                -- ORDER BY prefix compresses it to the same
-                                -- 93 bytes/row (measured, `rowsize`).
-    slot          UInt64,
-    block_time    DateTime64(3, 'UTC'),
-    tx_index      UInt32,
-    ix_index      UInt32,
-    tx_id         String,
-    wallet        String,
-    side          Enum8('buy' = 1, 'sell' = 2),
-    sol_amount    Float64,      -- SOL, as §2.3 specifies
-    token_amount  Float64,      -- tokens, as §2.3 specifies
-    sol_lamports  UInt64,       -- exact, drives reconstruction
-    token_units   UInt64,       -- exact
-    x_pre         Float64,      -- reconstructed, SOL
-    x_post        Float64,      -- reconstructed, SOL
-    x_pre_lamports   UInt64,
-    x_post_lamports  UInt64,
-    y_pre_units      UInt64,
-    y_post_units     UInt64,
-    vsol_post     UInt64,       -- on-chain virtual SOL reserve after trade
-    vtoken_post   UInt64,       -- on-chain virtual token reserve after trade
-    fee_lamports  UInt64,
-    split         LowCardinality(String) DEFAULT 'dev'
-)
-ENGINE = MergeTree
-PARTITION BY toYYYYMM(block_time)
-ORDER BY (token_mint, slot, tx_index, ix_index)
-"""
-
-TOKEN_DDL = f"""
-CREATE TABLE IF NOT EXISTS {config.CH_DATABASE}.token
-(
-    token_mint    LowCardinality(String),
-    created_at    DateTime64(3, 'UTC'),
-    creator       String,
-    create_slot   UInt64,
-    migrated      UInt8,        -- label only, never a filter (§2.2)
-    migrated_at   Nullable(DateTime64(3, 'UTC')),
-    in_sample     UInt8,
-    split         LowCardinality(String)
-)
-ENGINE = MergeTree
-ORDER BY (token_mint)
-"""
+LAUNCH_FROM, LAUNCH_TO = "2026-05-10", "2026-07-03"
 
 
-def client(database: str | None = config.CH_DATABASE):
-    return clickhouse_connect.get_client(
-        host=config.CH_HOST, port=config.CH_PORT, database=database or "default"
+def client():
+    return clickhouse_connect.get_client(host="127.0.0.1", port=config.CH_PORT)
+
+
+def iter_chunks():
+    for name in CHUNKS:
+        path = EXTRACT / name
+        if HOLDOUT in path.resolve().parents:
+            raise RuntimeError(f"refusing to load a holdout file: {path}")
+        if not path.exists():
+            raise FileNotFoundError(path)
+        yield path
+
+
+# --- commands --------------------------------------------------------------
+
+def cmd_start(_: argparse.Namespace) -> None:
+    if subprocess.run(["pgrep", "-f", "clickhouse server"],
+                      capture_output=True).returncode == 0:
+        print("server already running")
+        return
+    config.CH_DATA.mkdir(parents=True, exist_ok=True)
+    subprocess.Popen(
+        [str(config.CH_BINARY), "server", "--config-file",
+         str(config.CH_DATA / "config.xml")],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
-
-
-def wait_ready(timeout: int = 60) -> None:
-    import logging
-
-    logging.getLogger("clickhouse_connect").setLevel(logging.CRITICAL)  # readiness poll noise
-    deadline = time.time() + timeout
-    while time.time() < deadline:
+    for _ in range(30):
+        time.sleep(1)
         try:
-            client(database=None).command("SELECT 1")
+            client().command("SELECT 1")
+            print("server up")
             return
         except Exception:
-            time.sleep(1)
-    raise SystemExit("ClickHouse did not become ready")
+            continue
+    raise RuntimeError("server did not come up within 30s")
 
 
-def cmd_start(args: argparse.Namespace) -> None:
-    if not config.CH_BINARY.exists():
-        raise SystemExit(f"ClickHouse binary not found at {config.CH_BINARY}")
-    for sub in ("logs", "store", "tmp", "user_files"):
-        (config.CH_DATA / sub).mkdir(parents=True, exist_ok=True)
-    CH_CONFIG.write_text(CONFIG_XML.format(path=config.CH_DATA, http=config.CH_PORT))
-    try:
-        client(database=None).command("SELECT 1")
-        print("ClickHouse already running")
-        return
-    except Exception:
-        pass
-    log = (config.CH_DATA / "logs" / "stdout.log").open("a")
-    subprocess.Popen(
-        [str(config.CH_BINARY), "server", f"--config-file={CH_CONFIG}"],
-        stdout=log, stderr=log, start_new_session=True,
-    )
-    wait_ready()
-    version = client(database=None).command("SELECT version()")
-    print(f"ClickHouse {version} ready on {config.CH_HOST}:{config.CH_PORT}")
-
-
-def cmd_schema(args: argparse.Namespace) -> None:
-    ch = client(database=None)
-    ch.command(f"CREATE DATABASE IF NOT EXISTS {config.CH_DATABASE}")
-    ch.command(EVENT_DDL)
-    ch.command(TOKEN_DDL)
-    for table in ("event", "token"):
-        cols = ch.query(
-            "SELECT name, type FROM system.columns WHERE database=%(d)s AND table=%(t)s "
-            "ORDER BY position", parameters={"d": config.CH_DATABASE, "t": table}
-        ).result_rows
-        print(f"{config.CH_DATABASE}.{table}: {len(cols)} columns")
-    order = ch.query(
-        "SELECT sorting_key FROM system.tables WHERE database=%(d)s AND name='event'",
-        parameters={"d": config.CH_DATABASE},
-    ).result_rows[0][0]
-    assert order.replace(" ", "") == "token_mint,slot,tx_index,ix_index", order
-    print(f"event ORDER BY ({order})  [§2.4]")
-
-
-def _parquet_files(directory: Path) -> list[Path]:
-    return sorted(p for p in directory.glob("*.parquet"))
-
-
-def cmd_load(args: argparse.Namespace) -> None:
-    import pandas as pd
-
-    source = Path(args.path) if args.path else config.DEV
-    resolved = source.resolve()
-    if config.HOLDOUT.resolve() in [resolved, *resolved.parents]:
-        raise SystemExit(
-            "refusing to load from data/holdout/: the holdout stays sealed until "
-            "Phase 7 (spec §6.1)"
-        )
+def cmd_schema(_: argparse.Namespace) -> None:
     ch = client()
-    for path in _parquet_files(resolved):
-        table = "token" if path.stem.startswith("token") else "event"
-        frame = pd.read_parquet(path)
-        if "split" in frame.columns and (frame["split"] != "dev").any():
-            raise SystemExit(f"{path.name} contains non-dev rows; refusing to load")
-        ch.insert_df(table, frame)
-        print(f"loaded {len(frame):,} rows from {path.name} -> {table}")
-    cmd_sanity(args)
+    # Strip comment lines BEFORE splitting on ';'.  Splitting first breaks on any
+    # semicolon inside a comment -- the same defect that cut a Dune query in half
+    # on 2026-08-18, reproduced here by the word "null; taken literally".
+    body = "\n".join(line for line in DDL.read_text().splitlines()
+                     if not line.strip().startswith("--"))
+    for statement in body.split(";"):
+        if statement.strip():
+            ch.command(statement)
+    print(f"{TABLE} created from {DDL.name}")
 
 
-def cmd_sanity(args: argparse.Namespace) -> None:
-    """§2.4 sanity: token count, events per day, reserve continuity."""
+def cmd_load(_: argparse.Namespace) -> None:
     ch = client()
-    tokens, events = ch.query(
-        f"SELECT uniqExact(token_mint), count() FROM {config.CH_DATABASE}.event"
-    ).result_rows[0]
-    print(f"\ntokens with >=1 event: {tokens:,}   events: {events:,}")
-    print("\nevents per day:")
-    for day, n, tok in ch.query(
-        f"SELECT toDate(block_time) d, count() n, uniqExact(token_mint) t "
-        f"FROM {config.CH_DATABASE}.event GROUP BY d ORDER BY d"
-    ).result_rows:
-        print(f"  {day}  {n:>12,}  tokens={tok:>8,}")
+    total = 0
+    for path in iter_chunks():
+        table = load_chunk(path)
+        assert table.schema.equals(CANON), f"{path.name}: not canonical after cast"
+        ch.insert_arrow(TABLE, table)
+        total += table.num_rows
+        print(f"  {path.name:<24} +{table.num_rows:>8,}  -> {total:>9,}")
+    rows = ch.command(f"SELECT count() FROM {TABLE}")
+    print(f"loaded {total:,}; table holds {rows:,}")
 
 
-def measure_row_bytes(
-    n_rows: int = 400_000, n_tokens: int = 8_000, n_wallets: int = 60_000, seed: int = 3
-) -> dict[str, float]:
-    """Measure ClickHouse bytes per event row, for the §0.1 disk estimate.
+def cmd_verify(_: argparse.Namespace) -> None:
+    """Post-load asserts.  Structural only — no outcome distributions (§6.7)."""
+    ch = client()
+    fails: list[str] = []
 
-    Synthetic rows are shaped like the real thing where shape drives compression:
-    mints repeat (a token has many trades), wallets are drawn power-law so a few
-    addresses dominate, slots and timestamps increase, and amounts are lognormal.
-    Random base58 identifiers still compress worse than real ones, so the result
-    is an upper bound on bytes per row rather than a point estimate.
+    def check(name: str, ok: bool, detail: str = "") -> None:
+        print(f"  {'PASS' if ok else 'FAIL'}  {name}{'  ' + detail if detail else ''}")
+        if not ok:
+            fails.append(name)
+
+    # --- counts, against the parquet rather than against a remembered number
+    per_chunk = {p.name: load_chunk(p).num_rows for p in iter_chunks()}
+    expected = sum(per_chunk.values())
+    rows = ch.command(f"SELECT count() FROM {TABLE}")
+    check("row count == sum of chunk row counts", rows == expected,
+          f"{rows:,} == {' + '.join(f'{n:,}' for n in per_chunk.values())}")
+
+    distinct_keys = ch.command(
+        f"SELECT uniqExact(({', '.join(KEY)})) FROM {TABLE}")
+    check("burst key unique", distinct_keys == rows, f"{distinct_keys:,} of {rows:,}")
+
+    bad_len = ch.command(
+        f"SELECT countIf(length(nf3_traj_75_incl_pre) != 75) FROM {TABLE}")
+    check("length(nf3_traj_75_incl_pre) == 75 for every row", bad_len == 0)
+
+    bad_oh = ch.command(f"SELECT countIf(oh < 0) FROM {TABLE}")
+    check("oh >= 0", bad_oh == 0)
+    bad_conc = ch.command(
+        f"SELECT countIf(oh_conc < 0 OR oh_conc > 1) FROM {TABLE}")
+    check("0 <= oh_conc <= 1", bad_conc == 0)
+    bad_ratio = ch.command(f"SELECT countIf(oh_ratio < 0) FROM {TABLE}")
+    check("oh_ratio >= 0", bad_ratio == 0)
+
+    # Both sides pinned to UTC.  This server runs in Asia/Ulaanbaatar, so a bare
+    # parseDateTimeBestEffort() converts these UTC strings to local time and shifts
+    # them +8h -- which reported 6,562 rows outside a window they are inside.  That
+    # was a defect in the assert, not in the data (the raw strings run
+    # 2026-05-10 00:00:12 UTC .. 2026-07-02 23:59:39 UTC).
+    outside = ch.command(
+        f"SELECT countIf(parseDateTimeBestEffort(token_created_at, 'UTC') "
+        f"  <  toDateTime('{LAUNCH_FROM} 00:00:00', 'UTC') "
+        f"OR parseDateTimeBestEffort(token_created_at, 'UTC') "
+        f"  >= toDateTime('{LAUNCH_TO} 00:00:00', 'UTC')) FROM {TABLE}")
+    check(f"token_created_at in [{LAUNCH_FROM}, {LAUNCH_TO}) UTC", outside == 0)
+
+    # --- distinct tokens and NULL counts, both compared to the parquet
+    tokens_ch = ch.command(f"SELECT uniqExact(token_mint) FROM {TABLE}")
+    seen: set[str] = set()
+    parquet_nulls = {c: 0 for c in CANON.names}
+    for path in iter_chunks():
+        t = load_chunk(path)
+        seen |= set(t.column("token_mint").to_pylist())
+        for c in CANON.names:
+            parquet_nulls[c] += t.column(c).null_count
+    check("distinct token_mint == parquet", tokens_ch == len(seen),
+          f"{tokens_ch:,} == {len(seen):,}")
+
+    nullable = [c for c, n in parquet_nulls.items() if n]
+    ch_nulls = {}
+    for c in CANON.names:
+        ch_nulls[c] = (ch.command(f"SELECT countIf(isNull({c})) FROM {TABLE}")
+                       if c in nullable else 0)
+    mismatched = {c: (parquet_nulls[c], ch_nulls[c]) for c in CANON.names
+                  if parquet_nulls[c] != ch_nulls[c]}
+    check("per-column NULL counts == parquet", not mismatched,
+          str(mismatched) if mismatched else f"60 columns, {len(nullable)} nullable")
+
+    check("data/holdout/ empty", not any(HOLDOUT.iterdir()))
+
+    # --- 1,000 random rows, every column compared value by value
+    sampled, diffs = _compare_sample(ch, n=1000)
+    check("1,000 sampled rows match the parquet in every column", not diffs,
+          str(diffs)[:300] if diffs else f"{sampled:,} rows x 60 columns")
+
+    print(f"\n{'ALL PASS' if not fails else 'FAILED: ' + '; '.join(fails)}")
+    if fails:
+        sys.exit(1)
+
+
+def _compare_sample(ch, n: int) -> tuple[int, list[str]]:
+    """Pull n random keys back out of ClickHouse and diff them against the parquet.
+
+    Arrays are compared element by element, so a trajectory that lost or reordered
+    a slot shows up rather than passing on a length check.
     """
-    import numpy as np
-    import pandas as pd
+    keys = ch.query(
+        f"SELECT {', '.join(KEY)} FROM {TABLE} ORDER BY cityHash64({', '.join(KEY)}) "
+        f"LIMIT {n}").result_rows
+    wanted = {tuple(k) for k in keys}
 
-    rng = np.random.default_rng(seed)
-    alphabet = np.array(list("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"))
+    parquet_rows: dict[tuple, dict] = {}
+    for path in iter_chunks():
+        t = load_chunk(path)
+        cols = {c: t.column(c).to_pylist() for c in CANON.names}
+        for i in range(t.num_rows):
+            key = tuple(cols[c][i] for c in KEY)
+            if key in wanted:
+                parquet_rows[key] = {c: cols[c][i] for c in CANON.names}
 
-    def b58(n: int) -> np.ndarray:
-        chars = rng.choice(alphabet, size=(n, 44))
-        return np.array(["".join(row) for row in chars])
+    diffs: list[str] = []
+    if len(parquet_rows) != len(wanted):
+        diffs.append(f"{len(wanted) - len(parquet_rows)} sampled keys absent from parquet")
 
-    mints, wallets = b58(n_tokens), b58(n_wallets)
-    # tokens: a few very active, most nearly dead — mirrors pump.fun
-    token_weight = rng.pareto(1.2, n_tokens) + 1
-    mint_idx = rng.choice(n_tokens, size=n_rows, p=token_weight / token_weight.sum())
-    wallet_weight = rng.pareto(1.5, n_wallets) + 1
-    wallet_idx = rng.choice(n_wallets, size=n_rows, p=wallet_weight / wallet_weight.sum())
+    rows = ch.query(
+        f"SELECT {', '.join(f'`{c}`' for c in CANON.names)} FROM {TABLE} "
+        f"WHERE ({', '.join(KEY)}) IN {tuple(sorted(wanted))}").result_rows
+    for row in rows:
+        got = dict(zip(CANON.names, row))
+        key = tuple(got[c] for c in KEY)
+        want = parquet_rows.get(key)
+        if want is None:
+            diffs.append(f"{key}: not in parquet")
+            continue
+        for c in CANON.names:
+            a, b = want[c], got[c]
+            if isinstance(a, list):
+                if len(a) != len(b) or any(x != y for x, y in zip(a, b)):
+                    diffs.append(f"{key}.{c}: array differs")
+            elif a != b and not (a is None and b is None):
+                diffs.append(f"{key}.{c}: {a!r} != {b!r}")
+        if len(diffs) > 20:
+            break
+    return len(rows), diffs
 
-    slot = np.sort(rng.integers(360_000_000, 360_900_000, size=n_rows))
-    sol_lamports = np.clip(rng.lognormal(19.0, 1.6, n_rows), 1e6, 3e11).astype(np.uint64)
-    token_units = np.clip(rng.lognormal(33.0, 1.5, n_rows), 1e6, 1e15).astype(np.uint64)
-    vsol = np.clip(30e9 + np.cumsum(rng.normal(2e7, 3e8, n_rows)), 30e9, 115e9).astype(np.uint64)
 
-    y_units = np.floor(float(K_UNITS) / vsol.astype(float)).astype(np.uint64)
-
-    frame = pd.DataFrame({
-        "token_mint": mints[mint_idx],
-        "slot": slot.astype(np.uint64),
-        "block_time": pd.to_datetime(slot * 400, unit="ms", utc=True),
-        "tx_index": rng.integers(0, 2500, n_rows).astype(np.uint32),
-        "ix_index": rng.integers(0, 4, n_rows).astype(np.uint32),
-        "tx_id": "",
-        "wallet": wallets[wallet_idx],
-        "side": np.where(rng.random(n_rows) < 0.62, "buy", "sell"),
-        "sol_amount": sol_lamports / 1e9,
-        "token_amount": token_units / 1e6,
-        "sol_lamports": sol_lamports,
-        "token_units": token_units,
-        "x_pre": vsol / 1e9,
-        "x_post": vsol / 1e9,
-        "x_pre_lamports": vsol,
-        "x_post_lamports": vsol,
-        "y_pre_units": y_units,
-        "y_post_units": y_units,
-        "vsol_post": vsol,
-        "vtoken_post": y_units,
-        "fee_lamports": (sol_lamports // 100),
-        "split": "dev",
-    })
-
+def cmd_sanity(_: argparse.Namespace) -> None:
+    """Structural counts only.  Anything about §4.2/§4.3 outcomes belongs to Phase 3."""
     ch = client()
-    ch.command(f"DROP TABLE IF EXISTS {config.CH_DATABASE}.event_size_probe")
-    ch.command(EVENT_DDL.replace(".event", ".event_size_probe"))
-    ch.insert_df("event_size_probe", frame)
-    ch.command(f"OPTIMIZE TABLE {config.CH_DATABASE}.event_size_probe FINAL")
-    compressed, uncompressed, rows = ch.query(
-        "SELECT sum(data_compressed_bytes), sum(data_uncompressed_bytes), sum(rows) "
-        "FROM system.parts WHERE database=%(d)s AND table='event_size_probe' AND active",
-        parameters={"d": config.CH_DATABASE},
-    ).result_rows[0]
-    ch.command(f"DROP TABLE {config.CH_DATABASE}.event_size_probe")
-    return {
-        "rows": float(rows),
-        "compressed_bytes_per_row": compressed / rows,
-        "uncompressed_bytes_per_row": uncompressed / rows,
-        "compression_ratio": uncompressed / compressed,
-    }
-
-
-def cmd_rowsize(args: argparse.Namespace) -> None:
-    m = measure_row_bytes()
-    print(f"measured on {m['rows']:,.0f} synthetic rows:")
-    print(f"  compressed   {m['compressed_bytes_per_row']:.1f} bytes/row")
-    print(f"  uncompressed {m['uncompressed_bytes_per_row']:.1f} bytes/row")
-    print(f"  ratio        {m['compression_ratio']:.2f}x")
+    print(f"rows           {ch.command(f'SELECT count() FROM {TABLE}'):,}")
+    print(f"tokens         {ch.command(f'SELECT uniqExact(token_mint) FROM {TABLE}'):,}")
+    mayhem = ch.command(f"SELECT countIf(mayhem) FROM {TABLE}")
+    rows = ch.command(f"SELECT count() FROM {TABLE}")
+    print(f"mayhem rows    {mayhem:,}  ({100 * mayhem / rows:.2f}%)")
+    print("\nbursts by launch day:")
+    for day, n, t in ch.query(
+        f"SELECT toDate(parseDateTimeBestEffort(token_created_at, 'UTC')) AS d, "
+        f"count() AS n, uniqExact(token_mint) AS t "
+        f"FROM {TABLE} GROUP BY d ORDER BY d"
+    ).result_rows:
+        print(f"  {day}  bursts {n:>7,}  tokens {t:>7,}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("start")
-    sub.add_parser("schema")
-    load = sub.add_parser("load")
-    load.add_argument("--path", help="directory of parquet files (default data/dev)")
-    sub.add_parser("sanity")
-    sub.add_parser("rowsize", help="measure compressed bytes/row for the §0.1 estimate")
+    for name, fn in [("start", cmd_start), ("schema", cmd_schema), ("load", cmd_load),
+                     ("verify", cmd_verify), ("sanity", cmd_sanity)]:
+        sub.add_parser(name).set_defaults(fn=fn)
     args = parser.parse_args()
-    if not hasattr(args, "path"):
-        args.path = None
-    {"start": cmd_start, "schema": cmd_schema, "load": cmd_load,
-     "sanity": cmd_sanity, "rowsize": cmd_rowsize}[args.cmd](args)
+    args.fn(args)
 
 
 if __name__ == "__main__":
