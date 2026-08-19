@@ -376,3 +376,57 @@ def trigger_with_same_slot_neighbours(n_before: int = 2, n_after: int = 3,
 
 def config_field_names() -> set[str]:
     return {f.name for f in _dc_fields(SyntheticConfig)}
+
+
+# --- builders that consume the previously inert config parameters ------------
+#
+# `mayhem_share` was declared in SyntheticConfig from the start but `make_token`
+# never read it, so varying it changed nothing.  `n_wallets` was read only to
+# size a wallet pool, never to shape a measurable outcome.  Both are given a
+# builder here so a test can move them and observe something.
+# THIS IS CLAUDE CODE'S DECISION: the alternative was to leave two parameters
+# permanently untestable.
+
+def make_wallet_ladder(config: SyntheticConfig, lam: int = 1_000_000_000
+                       ) -> list[RawEvent]:
+    """`config.n_wallets` wallets, each buying the same SOL at a higher reserve.
+
+    Each successive buyer pays more per token and receives fewer tokens, so its
+    OH contribution is strictly smaller than the one before: the top three
+    contributors are the first three buyers, in order.
+    """
+    out: list[RawEvent] = []
+    x, y = X0_LAMPORTS, Y0_UNITS
+    for i in range(config.n_wallets):
+        units = tokens_out_for_sol_in(x, y, lam)
+        x, y = x + lam, y - units
+        out.append(_raw(1100 + i, 0, 0, 1, f"L{i:03d}" + "y" * 38, True,
+                        lam, units, x, y))
+    return out
+
+
+def make_mixed_mayhem_stream(config: SyntheticConfig
+                             ) -> tuple[list[list[RawEvent]], set[int]]:
+    """`config.n_tokens` streams, the first `mayhem_share` of them reparameterised.
+
+    Deterministic rather than sampled: the count is `round(n_tokens *
+    mayhem_share)`, so a test can assert it exactly instead of within a
+    binomial band.
+    """
+    n_mayhem = round(config.n_tokens * config.mayhem_share)
+    flagged = set(range(n_mayhem))
+    streams: list[list[RawEvent]] = []
+    for i in range(config.n_tokens):
+        mint = f"MIX{i:03d}" + "z" * 37
+        if i in flagged:
+            raws = mayhem_reparameterised()
+        else:
+            x, y = X0_LAMPORTS, Y0_UNITS
+            raws = []
+            for j in range(2):
+                lam = 1_000_000_000
+                units = tokens_out_for_sol_in(x, y, lam)
+                x, y = x + lam, y - units
+                raws.append(_raw(1200 + j, 0, 0, 1, W["A"], True, lam, units, x, y))
+        streams.append([replace(r, mint=mint) for r in raws])
+    return streams, flagged

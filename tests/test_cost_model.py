@@ -8,9 +8,31 @@ records rather than hides.
 
 from __future__ import annotations
 
-from decimal import Decimal
+import os
+from decimal import Decimal, localcontext
 
 import pytest
+
+#: Fallback when a test carries no `prec` marker.
+DEFAULT_PREC = 60
+
+
+@pytest.fixture(autouse=True)
+def decimal_precision(request):
+    """Run each test at the precision it declares, in a scoped context.
+
+    Phase 1 pinned nothing and inherited whatever the last-imported module had
+    set globally, so these tests passed or failed on collection order.  Each one
+    now states the precision its tolerance actually needs, measured by sweeping
+    `COST_MODEL_PREC_OVERRIDE` rather than guessed, and localcontext keeps that
+    choice from escaping the test.
+    """
+    override = int(os.environ.get("COST_MODEL_PREC_OVERRIDE", "0"))
+    marker = request.node.get_closest_marker("prec")
+    prec = override or (marker.args[0] if marker else DEFAULT_PREC)
+    with localcontext() as ctx:
+        ctx.prec = prec
+        yield
 
 from src.cost_model import (
     FEE_RATE,
@@ -30,6 +52,7 @@ ZERO = Decimal(0)
 
 # 1 -------------------------------------------------------------------------
 
+@pytest.mark.prec(18)   # measured: stable from prec >= 18
 @pytest.mark.parametrize("x_obs", [Decimal(35), Decimal(50), Decimal(100)])
 @pytest.mark.parametrize("q", [Decimal("0.5"), Decimal(1), Decimal(5)])
 def test_round_trip_with_no_flow_and_no_fees_is_exactly_zero(x_obs, q):
@@ -38,6 +61,7 @@ def test_round_trip_with_no_flow_and_no_fees_is_exactly_zero(x_obs, q):
     assert abs(pnl) < Decimal("1e-15"), f"{pnl} at x={x_obs}, q={q}"
 
 
+@pytest.mark.prec(16)   # measured: stable from prec >= 16
 def test_legacy_formula_fails_the_counterexample():
     """Kept as evidence, not as a fix: the §1.1 formula charges own impact twice.
 
@@ -52,6 +76,7 @@ def test_legacy_formula_fails_the_counterexample():
 
 # 2 -------------------------------------------------------------------------
 
+@pytest.mark.prec(8)   # measured: stable from prec >= 8
 def test_positive_flow_is_profitable_and_monotone_without_fees():
     ws = [Decimal("0.1"), Decimal("0.5"), Decimal(1), Decimal(2), Decimal(5)]
     pnls = [net_pnl(50, 1, V=0, W=w, fee_rate=0, pf=0) for w in ws]
@@ -61,6 +86,7 @@ def test_positive_flow_is_profitable_and_monotone_without_fees():
 
 # 3 -------------------------------------------------------------------------
 
+@pytest.mark.prec(18)   # measured: stable from prec >= 18
 @pytest.mark.parametrize("v", [Decimal("0.4"), Decimal(2), Decimal(10)])
 def test_latency_flow_alone_is_not_a_loss(v):
     """V shrinks Δy but the round trip still returns exactly what it cost.
@@ -75,6 +101,7 @@ def test_latency_flow_alone_is_not_a_loss(v):
 
 # 4 -------------------------------------------------------------------------
 
+@pytest.mark.prec(8)   # measured: stable from prec >= 8
 @pytest.mark.parametrize("q", [Decimal("0.5"), Decimal(1), Decimal(2)])
 def test_fees_alone_cost_about_two_fee_rates_of_q(q):
     pnl = net_pnl(50, q, V=0, W=0, fee_rate=FEE_RATE, pf=0)
@@ -85,6 +112,7 @@ def test_fees_alone_cost_about_two_fee_rates_of_q(q):
 
 # 5 -------------------------------------------------------------------------
 
+@pytest.mark.prec(40)   # measured: stable from prec >= 40
 def test_flow_path_does_not_matter_only_the_net():
     """Constant product: ten increments equal one jump of the same total."""
     total = Decimal(3)
@@ -94,6 +122,7 @@ def test_flow_path_does_not_matter_only_the_net():
     assert abs(one - net_pnl(50, 1, V=Decimal("0.4"), W=total)) < Decimal("1e-40")
 
 
+@pytest.mark.prec(42)   # measured: stable from prec >= 42
 def test_path_with_flow_reversals_still_only_depends_on_the_net():
     mixed = [Decimal(5), Decimal(-4), Decimal(3), Decimal(-1)]      # net 3
     assert abs(net_pnl_path(50, 1, ZERO, mixed)
@@ -102,6 +131,7 @@ def test_path_with_flow_reversals_still_only_depends_on_the_net():
 
 # 6 -------------------------------------------------------------------------
 
+@pytest.mark.prec(22)   # measured: stable from prec >= 22
 @pytest.mark.parametrize("x_obs", [Decimal(35), Decimal(50), Decimal(100)])
 @pytest.mark.parametrize("v", [ZERO, V_P75_SOL])
 def test_small_q_limit_is_the_pure_fee_price_move(x_obs, v):
@@ -113,6 +143,7 @@ def test_small_q_limit_is_the_pure_fee_price_move(x_obs, v):
 
 # 7 -------------------------------------------------------------------------
 
+@pytest.mark.prec(12)   # measured: stable from prec >= 12
 def test_breakeven_w_substituted_back_gives_zero_pnl_everywhere():
     """Every reference cell: net_pnl at the solved W must be zero to 1e-9 SOL."""
     worst = ZERO
@@ -124,12 +155,14 @@ def test_breakeven_w_substituted_back_gives_zero_pnl_everywhere():
 
 # 8 -------------------------------------------------------------------------
 
+@pytest.mark.prec(8)   # measured: stable from prec >= 8
 @pytest.mark.parametrize("x_obs", [Decimal(35), Decimal(50), Decimal(70), Decimal(100)])
 def test_breakeven_w_increases_with_order_size(x_obs):
     ws = [breakeven_w(x_obs, q) for q in [Decimal("0.5"), Decimal(1), Decimal(2), Decimal(5)]]
     assert all(a < b for a, b in zip(ws, ws[1:])), ws
 
 
+@pytest.mark.prec(8)   # measured: stable from prec >= 8
 @pytest.mark.parametrize("q", [Decimal("0.5"), Decimal(1), Decimal(2), Decimal(5)])
 def test_breakeven_w_increases_with_depth(q):
     ws = [breakeven_w(x, q) for x in [Decimal(35), Decimal(50), Decimal(70), Decimal(100)]]
@@ -148,6 +181,7 @@ def _legacy_dv(x_obs: Decimal, q: Decimal, v: Decimal) -> Decimal:
     return x_obs * ((1 + be).sqrt() - 1)
 
 
+@pytest.mark.prec(8)   # measured: stable from prec >= 8
 def test_legacy_overstates_the_required_flow_on_every_reference_cell():
     """Records the size of the error rather than asserting a particular ratio."""
     ratios = []

@@ -158,3 +158,139 @@ FAILED tests/test_cost_model.py::test_path_with_flow_reversals_still_only_depend
 `src/oh_reference.py` **хөндөөгүй** · SQL-ийн extract query **засварлаагүй** ·
 xfail-ийн аль нь ч заваагүй · Dune query **үгүй** (үлдэгдэл 26.84 хэвээр) ·
 Phase 3b **үгүй** · `data/holdout/` хөндөөгүй.
+
+---
+
+# Тестийн дэд бүтэц ба параметрийн хамрах хүрээ
+
+**Огноо:** 2026-08-19 (нэмэлт) · Dune-д хандаагүй (үлдэгдэл 26.84) ·
+`src/oh_reference.py`, SQL extract query, A1/B/C/E-ийн тестүүд **хөндөгдөөгүй**
+
+## 1. Decimal-ийн глобал контекст
+
+**Согог:** `tests/test_curve.py:45` нь import үедээ `getcontext().prec = 40` тавьдаг.
+Decimal-ийн контекст нь thread-local **глобал** тул модуль хооронд алддаг ба
+`test_cost_model`-ийн үр дүн цуглуулгын дараалалаас хамаарч байв.
+
+**Засвар:** тэр мөрийг `localcontext()`-т суурилсан autouse fixture-ээр сольсон —
+prec = 40 нь зөвхөн тэр модулийн тестүүдэд үйлчилж, гарахдаа өмнөх контекстыг сэргээнэ.
+Ямар ч тест модуль одоо глобал контекст өөрчилдөггүй.
+
+**`src/`-д үлдсэн, ЗАСААГҮЙ (src-ийн өөрчлөлт тул асуух ёстой):**
+
+| файл | мөр |
+|---|---|
+| `src/cost_model.py:44` | `getcontext().prec = 60` |
+| `src/features_reference.py:27` | `getcontext().prec = 60` |
+| `src/oh_reference.py:34` | `getcontext().prec = 60` |
+
+Гурвуулаа **60** тул одоогоор зөрчилдөхгүй, гэвч аль нэг нь өөр утга авбал дахин
+дараалалаас хамаарах болно. Тестүүд одоо өөрсдийн prec-ээ хаалттай тавьдаг тул
+**энэ эрсдэлээс хамгаалагдсан**: глобал контекстыг санаатайгаар `prec = 9` болгож
+ажиллуулахад `tests/test_cost_model.py`-ийн **35 тест бүгд давсан**.
+
+### Санамсаргүй дараалал × 5
+
+run 1: 198 passed, 1 xfailed in 1.27s
+        order: slot_ordering, generator_parameters, curve, cost_basis, reconstruct_label, parity, leakage, label_boundary, burst, cost_model, audit_findings
+run 2: 198 passed, 1 xfailed in 1.11s
+        order: generator_parameters, curve, audit_findings, leakage, cost_basis, slot_ordering, burst, cost_model, label_boundary, reconstruct_label, parity
+run 3: 198 passed, 1 xfailed in 1.11s
+        order: cost_basis, audit_findings, burst, curve, label_boundary, slot_ordering, reconstruct_label, cost_model, generator_parameters, parity, leakage
+run 4: 198 passed, 1 xfailed in 0.99s
+        order: generator_parameters, leakage, curve, audit_findings, cost_basis, reconstruct_label, slot_ordering, cost_model, parity, burst, label_boundary
+run 5: 198 passed, 1 xfailed in 0.98s
+        order: burst, audit_findings, cost_model, slot_ordering, cost_basis, generator_parameters, curve, reconstruct_label, parity, label_boundary, leakage
+
+Тав нь бүгд **ижил** — `198 passed, 1 xfailed`.
+
+## 2. Phase 1-ийн тестүүдийн нарийвчлал
+
+Тэдгээр нь prec-ээ заагаагүй тул хамгийн сүүлд import хийгдсэн модулийн үлдээсэн
+глобал утга дээр ажиллаж, **санамсаргүйгээр** давж байсан. Одоо тест бүр
+`@pytest.mark.prec(N)` тэмдэгтэй бөгөөд autouse fixture нь `localcontext`-оор тавина.
+
+**N-ийг хэмжсэн** (`COST_MODEL_PREC_OVERRIDE` sweep, prec ∈ {8…80}). "Тогтвортой
+хязгаар" гэдэг нь **N-ээс дээш бүх** prec дээр давдаг хамгийн бага утга — энгийн
+"хамгийн бага давсан" биш, учир нь давалт **монотон биш**:
+
+| Тест | prec ≥ | Доор нь унадаг |
+|---|---|---|
+| `test_breakeven_w_increases_with_depth` | **8** | — |
+| `test_breakeven_w_increases_with_order_size` | **8** | — |
+| `test_fees_alone_cost_about_two_fee_rates_of_q` | **8** | — |
+| `test_legacy_overstates_the_required_flow_on_every_reference_cell` | **8** | — |
+| `test_positive_flow_is_profitable_and_monotone_without_fees` | **8** | — |
+| `test_breakeven_w_substituted_back_gives_zero_pnl_everywhere` | **12** | 8, 10 |
+| `test_legacy_formula_fails_the_counterexample` | **16** | 8–14 |
+| `test_latency_flow_alone_is_not_a_loss` | **18** | 8–16 |
+| `test_round_trip_with_no_flow_and_no_fees_is_exactly_zero` | **18** | 8–16 |
+| `test_small_q_limit_is_the_pure_fee_price_move` | **22** | 8–20 |
+| `test_flow_path_does_not_matter_only_the_net` | **40** | 10–38 |
+| `test_path_with_flow_reversals_still_only_depends_on_the_net` | **42** | 8–40 |
+
+**Модулийн хэмжээнд: prec ≥ 42.**
+
+Монотон бус байдлын жишээ: `test_path_with_flow_reversals` нь prec = 35 дээр
+**давдаг** ч 40 дээр **унадаг** — 35 дээр хоёр утга санамсаргүйгээр ижил орон
+хүртэл бөөрөнхийлөгддөг. Тиймээс "хамгийн бага давсан" гэдэг хэмжигдэхүүн
+төөрөгдүүлнэ. **ЭНЭ БОЛ CLAUDE CODE-ИЙН ШИЙДВЭР** — тогтвортой хязгаарыг сонгосон.
+
+Хоёр хамгийн шаардлагатай тест нь `1e-40` хүлцэлтэй хоёр — өчигдөр унасан нь тэдний
+нэг. Ямар ч тест бодитой prec дээр давахгүй байсан тохиолдол **гараагүй** тул
+зогсох шаардлага үүсээгүй.
+
+## 3. F1-ийн 6 параметр — `tests/test_generator_parameters.py`
+
+| Параметр | Тест | Хүлээлтийн эх сурвалж | Үр дүн |
+|---|---|---|---|
+| `sell_share` | cost basis тогтмол, inventory буурна | **§1.2**: "Sell гарвал … cost basis-ийг хэвээр үлдээнэ" | **PASS** |
+| `slot_density` | trailing цонхны хил нягтралаас хамаарахгүй | §3, §6.1 цонх `(s−w, s]`; 300 event, бүх trigger дээр тодорхойлолтоос дахин гаргасан | **PASS** |
+| `round_share` | f9 = **яг 0** (share=0) ба **яг 1** (share=1); 0.5 дээр [0.40, 0.60] | §3 f9; Binomial(400, 0.5), sd = 10, ±4sd | **PASS** ×3 |
+| `mayhem_share` | flagged тоо = `round(n·share)`; mayhem дээр `P_launch/P_inst = 1.5`, цэвэр дээр `= 1` | §1.1 `P = x²/k`, `k` createevent-ээс; алгебр `P_launch/P_inst = x·y/k₀` | **PASS** ×5 |
+| `n_wallets` | `n = 3` дээр `oh_conc = 1` **яг**; n өсөхөд буурна | §1.2 OH_conc = дээд-3-ын хувь | **PASS** ×5 |
+| `n_tokens` | токен хоорондын ledger тусгаарлагдсан | §1.2 (wallet, token) тус бүрд | **PASS** |
+
+**16 тест, бүгд PASS.**
+
+### Хоёр параметр ИДЭВХГҮЙ байсан — олдвор
+
+- **`mayhem_share`** нь `SyntheticConfig`-д зарлагдсан боловч `make_token` **уншдаггүй**
+  байсан: түүнийг өөрчлөхөд юу ч өөрчлөгддөггүй.
+- **`n_wallets`** нь зөвхөн wallet-ийн санг хэмжихэд ашиглагдаж, хэмжигдэх үр дүнд
+  нөлөөлдөггүй байв.
+
+Хоёуланд нь бүтээгч нэмсэн (`make_mixed_mayhem_stream`, `make_wallet_ladder`).
+**ЭНЭ БОЛ CLAUDE CODE-ИЙН ШИЙДВЭР** — өөр сонголт нь хоёр параметрийг үүрд
+шалгагдахааргүй үлдээх байлаа.
+
+### Нэг хүлээлт БУРУУ байсан
+
+Даалгаварт `sell_share` өсөхөд "OH-д оролцох wallet-ийн тоо буурна" гэсэн. **Буурдаггүй.**
+Генератор нь `rng.randint(1, sellable)` буюу **хэсэгчлэн** зардаг тул wallet бараг
+хэзээ ч яг тэг дээр буудаггүй: sell_share = 0.0 ба 0.9 хоёуланд нь эерэг үлдэгдэлтэй
+wallet **12 хэвээр**. Хэмжсэн баримтыг тестэд бичиж тогтоов (позицийг бүрэн хаадаг
+генератор ирвэл энэ тест барина); хөдөлдөг хэмжигдэхүүн нь **нийт inventory**.
+
+## 4. F1 мета-тест
+
+6 параметр хамрагдсаны дараа F1 **PASS болсон** → `xfail` **хасагдсан**.
+Зураглал нь **хэмжилтээр** (`_parameters_varied_by_tests`, `param=` түлхүүр-аргумент
+хэлбэр, өөрийн мөрийн литералуудыг тооцохгүй) тул `SyntheticConfig`-д шинэ параметр
+нэмэгдэхэд гараар юу ч шинэчлэхгүйгээр автоматаар барина.
+`UNEXERCISED_PARAMETERS` одоо **хоосон**.
+
+**Үлдсэн `xfail` ганц:** A1 (`fwd_net_flow`-ийн label-ийн хил) — дахин extract-ийн
+дараа шийдэгдэнэ, хөндөөгүй.
+
+## `pytest -q` — бүтэн гаралт (шинэчилсэн)
+
+```
+x....................................................................... [ 36%]
+........................................................................ [ 72%]
+.......................................................                  [100%]
+198 passed, 1 xfailed in 1.38s
+```
+
+**198 passed, 1 xfailed, 0 failed.** Өмнөх ажиллуулалтын 1 FAILED (Decimal-ийн
+контекстын алдагдал) арилсан.

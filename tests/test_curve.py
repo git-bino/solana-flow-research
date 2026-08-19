@@ -9,7 +9,7 @@ against real on-chain state are validation checks 1, 2 and 5 in
 from __future__ import annotations
 
 import random
-from decimal import Decimal, getcontext
+from decimal import Decimal, localcontext
 
 import pytest
 
@@ -42,7 +42,21 @@ from src.curve import (
     tokens_out_for_sol_in,
 )
 
-getcontext().prec = 40
+
+@pytest.fixture(autouse=True)
+def _curve_decimal_precision():
+    """40 digits for this module only.
+
+    This used to be `getcontext().prec = 40` at import, which mutates the
+    thread-global decimal context and leaks into every other test module.  It
+    made tests/test_cost_model.py pass or fail depending on collection order
+    (docs/audit_findings_tests.md).  localcontext restores the previous context
+    on exit, so nothing outside this module sees it.
+    """
+    with localcontext() as ctx:
+        ctx.prec = 40
+        yield
+
 
 NET = SolAmountConvention.NET_OF_FEE
 GROSS = SolAmountConvention.GROSS_INCLUDES_FEE

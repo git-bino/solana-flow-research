@@ -340,13 +340,12 @@ def test_overhead_differs_between_the_two_price_conventions_documents_current_in
 # F. coverage meta-test
 # ===========================================================================
 
-#: Parameters no test varies today, measured rather than assumed by
-#: `_parameters_varied_by_tests()` on 2026-08-19.  Six of eleven: the generator
-#: can express them, but every stream in the suite leaves them at their default.
-UNEXERCISED_PARAMETERS = {
-    "mayhem_share", "n_tokens", "n_wallets", "round_share", "sell_share",
-    "slot_density",
-}
+#: Parameters no test varies.  Empty since 2026-08-19: the six that were listed
+#: here — mayhem_share, n_tokens, n_wallets, round_share, sell_share,
+#: slot_density — are covered by tests/test_generator_parameters.py.  Two of them
+#: (mayhem_share, n_wallets) needed a generator builder first, because the config
+#: declared them without anything reading them.
+UNEXERCISED_PARAMETERS: set[str] = set()
 
 
 def _parameters_varied_by_tests() -> dict[str, list[str]]:
@@ -355,6 +354,9 @@ def _parameters_varied_by_tests() -> dict[str, list[str]]:
     Keyword form (`name=`) rather than a bare mention, so that this module's own
     string literals and unpackings like `oh, _, _, n_wallets = ...` do not count
     themselves as coverage.  A self-certifying meta-test would be worthless.
+
+    Measured, never hand-maintained: a parameter added to SyntheticConfig with no
+    test moving it shows up here on the next run without anyone updating a map.
     """
     out: dict[str, list[str]] = {}
     for name in sorted(config_field_names()):
@@ -368,18 +370,16 @@ def _parameters_varied_by_tests() -> dict[str, list[str]]:
     return out
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "FINDING: six of eleven generator parameters are never varied by any test - "
-    "mayhem_share, n_tokens, n_wallets, round_share, sell_share, slot_density. "
-    "Every stream in the suite leaves them at their default, so the behaviour "
-    "they control is untested.  Reported, not repaired."))
 def test_every_generator_parameter_is_exercised_by_some_test():
     """Meta-test: generator coverage bounds test power.
 
     The audit's lesson was that a condition the generator cannot build is a
     condition no test can check.  The same holds one step further in: a parameter
-    no test moves is a condition no test explores.  This is the assertion the
-    brief asks for, written to state the goal rather than today's shortfall.
+    no test moves is a condition no test explores.
+
+    This was xfail(strict) when written on 2026-08-19 — six of eleven parameters
+    were never varied.  The xfail is gone because the gap was closed, not because
+    the assertion was weakened.
     """
     varied = _parameters_varied_by_tests()
     missing = sorted(name for name, hits in varied.items() if not hits)
@@ -387,13 +387,13 @@ def test_every_generator_parameter_is_exercised_by_some_test():
 
 
 def test_measured_generator_parameter_coverage_is_pinned():
-    """Companion to the xfail above: records the gap so it cannot widen unseen.
+    """Companion to the assertion above: records the coverage so it cannot rot.
 
-    Expectation source: measured on 2026-08-19 by the helper above, not guessed.
-    An earlier draft of this file hand-wrote a parameter-to-file map and asserted
-    it; the map was wrong (it claimed test_parity.py exercised n_tokens, which it
-    never has, since parity runs on cached real data), and this test exists
-    because that draft failed.
+    Expectation source: measured by the helper, not guessed.  An earlier draft of
+    this file hand-wrote a parameter-to-file map and asserted it; the map was
+    wrong (it claimed test_parity.py exercised n_tokens, which it never has, since
+    parity runs on cached real data), and this test exists because that draft
+    failed.
     """
     varied = _parameters_varied_by_tests()
     assert set(varied) == config_field_names()
