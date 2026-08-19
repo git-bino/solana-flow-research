@@ -128,3 +128,112 @@ def load_chunk(path: str | Path) -> pa.Table:
     if missing or extra:
         raise ValueError(f"{path}: missing {sorted(missing)}, unexpected {sorted(extra)}")
     return table.select(CANON.names).cast(CANON)
+
+
+# ===========================================================================
+# v2 (spec v1.4, decisions.md 2026-08-19).  `CANON` above is NOT touched:
+# `flow.burst` holds 667,809 rows written against it, and the audit trail needs
+# that schema to stay readable.
+#
+# 80 columns.  Against v1's 60: `ix_index` (packed) is gone, the four `oh*`
+# columns become `_a`/`_b` pairs (one per transfer variant), and 21 columns are
+# added — the raw index pair, the token reserve and both prices, the two
+# transfer variants of every OH quantity, three cost-basis conventions, the
+# per-slot forward baselines, and the y side of every forward reserve.
+# docs/extract_v2_schema.md carries the per-column reasons.
+# ===========================================================================
+
+#: Columns that can be NULL by construction rather than by accident.
+_V2_NULLABLE = {
+    "quote_mint",            # absent before 2026-05-21
+    "accel",                 # §3 f2, zero denominator
+    "death_age_incl",        # censored trajectory
+    "death_age_excl",
+    "death_age_slot",
+    "cb_reset_gross",        # nullif on zero units
+    "cb_net",
+    "cb_legacy",
+    "fwd_price_ret_12slot",  # zero reserve on either side
+    "size_cv_25slot",        # §3 f8, empty window
+    "round_frac_25slot",     # §3 f9, empty window
+}
+
+_V2_INT = {
+    "slot", "tx_index", "outer_ix_index", "inner_ix_index", "event_seq",
+    "x0_lam", "y0_units", "n_buyers_12slot", "n_trades_25slot",
+    "oh_n_wallets_a", "oh_n_wallets_b", "traj_len", "nonzero_incl",
+    "burst_age_slot",
+    "nonzero_excl", "death_age_incl", "death_age_excl", "death_age_slot",
+    "launch_window_guard",
+}
+_V2_STR = {
+    "token_mint", "trigger_wallet", "quote_mint", "block_time",
+    "minute_bucket", "token_created_at", "age_min",
+}
+_V2_BOOL = {
+    "mayhem", "mayhem_at_launch", "trigger_is_buy", "censored_incl",
+    "censored_excl", "hazard_censored", "qual_005", "qual_020",
+}
+_V2_LIST = {"nf3_traj_75_incl_pre"}
+
+#: Column order as `sql/extract_v2.sql` emits it.  The Dune API returns keys
+#: sorted, so the loader sorts before comparing — see `load_chunk_v2`.
+V2_COLUMNS = [
+    "token_mint", "slot", "tx_index", "outer_ix_index", "inner_ix_index",
+    "event_seq", "block_time", "minute_bucket", "token_created_at", "age_min",
+    "quote_mint", "mayhem", "mayhem_at_launch", "x0_lam", "y0_units",
+    "depth_x", "y_t", "curve_progress", "p_t", "p_launch",
+    "trigger_wallet", "trigger_is_buy", "trigger_sol", "trigger_tokens",
+    "trigger_fee_sol",
+    "net_flow_3slot", "net_flow_5slot", "net_flow_12slot", "net_flow_25slot",
+    "accel", "n_buyers_12slot", "n_trades_25slot",
+    "size_cv_25slot", "round_frac_25slot", "burst_age_slot",
+    "oh_a", "oh_b", "oh_ratio_a", "oh_ratio_b", "oh_conc_a", "oh_conc_b",
+    "oh_n_wallets_a", "oh_n_wallets_b",
+    "cb_reset_gross", "cb_net", "cb_legacy", "held_from_buys",
+    "held_from_transfers",
+    "fwd_net_flow_5slot", "fwd_net_flow_12slot", "fwd_net_flow_37slot",
+    "x_end_slot", "y_end_slot", "x_at_plus5", "x_at_plus12", "x_at_plus37",
+    "y_at_plus5", "y_at_plus12", "y_at_plus37", "fwd_price_ret_12slot",
+    "v_latency_1slot", "v_latency_2slot", "v_latency_3slot",
+    "v_latency_7slot", "v_latency_8slot",
+    "nf3_traj_75_incl_pre", "nf3_excl_pre_1", "nf3_excl_pre_2",
+    "traj_len", "nonzero_incl", "nonzero_excl",
+    "death_age_incl", "death_age_excl", "death_age_slot",
+    "censored_incl", "censored_excl", "hazard_censored",
+    "qual_005", "qual_020", "launch_window_guard",
+]
+
+
+def _v2_type(name: str) -> pa.DataType:
+    if name in _V2_LIST:
+        return pa.list_(pa.float64())
+    if name in _V2_STR:
+        return pa.large_string()
+    if name in _V2_BOOL:
+        return pa.bool_()
+    if name in _V2_INT:
+        return pa.int64()
+    return pa.float64()
+
+
+#: Sorted, because that is the order the Dune API hands back and therefore the
+#: order a chunk parquet gets written in (docs/phase0_extract_run.md).
+CANON_V2 = pa.schema([(n, _v2_type(n)) for n in sorted(V2_COLUMNS)])
+
+#: The burst key under v2: the packed index is replaced by the raw pair (fix 2).
+KEY_V2 = ["token_mint", "slot", "tx_index", "outer_ix_index", "inner_ix_index"]
+
+
+def load_chunk_v2(path: str | Path) -> pa.Table:
+    """Read a v2 extract parquet and cast it to `CANON_V2`.
+
+    Same safe cast as `load_chunk`: a value that does not fit the declared type
+    raises instead of being truncated.
+    """
+    table = pq.read_table(path)
+    missing = set(CANON_V2.names) - set(table.column_names)
+    extra = set(table.column_names) - set(CANON_V2.names)
+    if missing or extra:
+        raise ValueError(f"{path}: missing {sorted(missing)}, unexpected {sorted(extra)}")
+    return table.select(CANON_V2.names).cast(CANON_V2)

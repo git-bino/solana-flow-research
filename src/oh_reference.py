@@ -309,3 +309,224 @@ if __name__ == "__main__":
     for r in rows:
         print(json.dumps({k: (str(v) if isinstance(v, Decimal) else v)
                           for k, v in r.items()}))
+
+
+# ===========================================================================
+# v2 conventions (spec v1.4, decisions.md 2026-08-19).
+#
+# Everything above is the v1 path and is deliberately left byte-for-byte intact:
+# 198 tests pin it, and the extract that produced `flow.burst` used it.  The v2
+# behaviour lives in parallel classes selected by `LedgerConfig`, so parity can
+# be run in either mode and the two compared on the same events.
+#
+# What changed, and why each is a flag rather than a replacement:
+#
+#   basis_reset      §1.2 never said what happens after a wallet goes flat.  The
+#                    audit showed averaging across a full exit prices a position
+#                    at 5.5 that actually cost 10.  Both conventions are emitted.
+#   fee_in_basis     `sol_amount` is net of fee, so the v1 basis understates what
+#                    the wallet paid by one fee.  Both are emitted.
+#   price_mode       P = x/y is the reserve ratio actually on the curve; x²/(x₀y₀)
+#                    assumes k never moved, which mayhem breaks.  Both are emitted.
+#   transfer_mode    SPL transfers move tokens without a TradeEvent.  Two readings
+#                    of the receiving side are defined below and NEITHER is
+#                    chosen here — that is the research lead's call.
+# ===========================================================================
+
+
+@dataclass(frozen=True)
+class LedgerConfig:
+    """Which conventions a v2 replay uses.  Defaults reproduce the v1 ledger."""
+
+    #: reset the cost basis when the balance reaches or crosses zero
+    basis_reset: bool = False
+    #: add `fee + creator_fee` to the numerator of the basis
+    fee_in_basis: bool = False
+    #: "launch" = x²/(x₀·y₀); "instantaneous" = x/y
+    price_mode: str = "launch"
+    #: "none"   — transfers are not read at all (the v1 ledger)
+    #: "exclude" — variant (a): transferred-in tokens never enter OH
+    #: "inherit" — variant (b): transferred-in tokens carry the sender's basis
+    transfer_mode: str = "none"
+
+    def __post_init__(self) -> None:
+        if self.price_mode not in ("launch", "instantaneous"):
+            raise ValueError(self.price_mode)
+        if self.transfer_mode not in ("none", "exclude", "inherit"):
+            raise ValueError(self.transfer_mode)
+
+
+V1 = LedgerConfig()
+V2_NO_TRANSFERS = LedgerConfig(basis_reset=True, fee_in_basis=True,
+                               price_mode="instantaneous", transfer_mode="none")
+
+
+@dataclass(frozen=True, slots=True)
+class TransferIn:
+    """An SPL transfer as the ledger sees it.  Carries no price of its own."""
+    mint: str
+    slot: int
+    tx_index: int
+    outer_ix: int
+    inner_ix: int
+    sender: str
+    recipient: str
+    units: int
+
+    @property
+    def key(self) -> tuple[int, int, int, int]:
+        return (self.slot, self.tx_index, self.outer_ix, self.inner_ix)
+
+
+@dataclass(slots=True)
+class WalletStateV2:
+    """Inventory and cost basis under a `LedgerConfig`.
+
+    Three balances are tracked because the transfer variants need to tell them
+    apart:
+
+        held          everything the wallet holds, however it arrived
+        held_from_buys  only what it bought on the curve
+        held_from_xf  only what arrived by transfer  (held = buys + xf - sells)
+
+    Sells are applied to the whole balance, so `held_from_buys` is reduced first
+    and the transferred part only once the bought part is gone.  THIS IS CLAUDE
+    CODE'S DECISION: the spec does not order them, and taking buys first is the
+    reading that keeps variant (a) conservative — it retires the OH-eligible
+    tokens before the ineligible ones.
+    """
+
+    cfg: LedgerConfig = field(default_factory=LedgerConfig)
+    buy_lam: int = 0            # numerator of the basis, per `fee_in_basis`
+    buy_units: int = 0
+    held: int = 0
+    held_from_buys: int = 0
+    held_from_xf: int = 0
+    xf_lam: int = 0             # inherited numerator, "inherit" mode only
+    xf_units: int = 0
+    went_flat: bool = False
+
+    def _reset(self) -> None:
+        self.buy_lam = self.buy_units = 0
+        self.xf_lam = self.xf_units = 0
+        self.held_from_buys = self.held_from_xf = 0
+
+    def apply_trade(self, ev: Event, fee_lam: int = 0) -> None:
+        if ev.is_buy:
+            self.buy_lam += ev.lam + (fee_lam if self.cfg.fee_in_basis else 0)
+            self.buy_units += ev.units
+            self.held += ev.units
+            self.held_from_buys += ev.units
+        else:
+            self.held -= ev.units
+            taken_from_buys = min(self.held_from_buys, ev.units)
+            self.held_from_buys -= taken_from_buys
+            self.held_from_xf -= ev.units - taken_from_buys
+            if self.held <= 0:
+                self.went_flat = True
+                if self.cfg.basis_reset:
+                    self._reset()
+
+    def apply_transfer_out(self, units: int) -> None:
+        """§1.2's sell rule: the balance falls, the basis does not move."""
+        self.held -= units
+        taken = min(self.held_from_buys, units)
+        self.held_from_buys -= taken
+        self.held_from_xf -= units - taken
+        if self.held <= 0:
+            self.went_flat = True
+            if self.cfg.basis_reset:
+                self._reset()
+
+    def apply_transfer_in(self, units: int, sender_basis: Decimal | None) -> None:
+        self.held += units
+        self.held_from_xf += units
+        if self.cfg.transfer_mode == "inherit" and sender_basis is not None:
+            self.xf_lam += int(sender_basis * Decimal(units) * THOUSAND)
+            self.xf_units += units
+
+    def cost_basis(self) -> Decimal | None:
+        """SOL per token over whatever the config says counts."""
+        if self.cfg.transfer_mode == "inherit":
+            lam, units = self.buy_lam + self.xf_lam, self.buy_units + self.xf_units
+        else:
+            lam, units = self.buy_lam, self.buy_units
+        if units == 0:
+            return None
+        return Decimal(lam) / (Decimal(units) * THOUSAND)
+
+    def oh_units(self) -> int:
+        """The balance OH is allowed to price, per the transfer variant."""
+        if self.cfg.transfer_mode == "exclude":
+            return max(self.held_from_buys, 0)
+        return max(self.held, 0)
+
+
+@dataclass(slots=True)
+class TokenStateV2:
+    """One token's wallets under a `LedgerConfig`.
+
+    `apply_transfer` needs the sender's basis at the moment of the transfer,
+    which is why transfers are applied through the token rather than the wallet.
+
+    LIMITATION, stated rather than hidden: inheritance is ONE HOP.  A wallet that
+    received tokens by transfer and passes them on hands over the basis it holds
+    at that instant, which under "inherit" already includes what it inherited —
+    so chains do propagate here in Python, where state is sequential.  The SQL
+    side cannot express that fixpoint and inherits from the sender's BUY-derived
+    basis only; `docs/extract_v2_schema.md` records the divergence, and its size
+    is unmeasured.
+    """
+
+    x0_lam: int
+    y0_units: int
+    cfg: LedgerConfig = field(default_factory=LedgerConfig)
+    wallets: dict[str, WalletStateV2] = field(default_factory=dict)
+
+    def _w(self, wallet: str) -> WalletStateV2:
+        if wallet not in self.wallets:
+            self.wallets[wallet] = WalletStateV2(cfg=self.cfg)
+        return self.wallets[wallet]
+
+    def apply(self, ev: Event, fee_lam: int = 0) -> None:
+        self._w(ev.wallet).apply_trade(ev, fee_lam)
+
+    def apply_transfer(self, xf: TransferIn) -> None:
+        if self.cfg.transfer_mode == "none":
+            return
+        sender = self._w(xf.sender)
+        basis = sender.cost_basis()
+        sender.apply_transfer_out(xf.units)
+        self._w(xf.recipient).apply_transfer_in(xf.units, basis)
+
+    def spot_price(self, vsol: int, vtok: int | None = None) -> Decimal:
+        """P(t).  `vtok` is required for the instantaneous mode and ignored otherwise."""
+        if self.cfg.price_mode == "instantaneous":
+            if vtok is None:
+                raise ValueError("instantaneous pricing needs the token reserve")
+            return (Decimal(vsol) / LAMPORTS) / (Decimal(vtok) / TOKEN_UNITS)
+        return (Decimal(vsol) * Decimal(vsol)) / (
+            Decimal(self.x0_lam) * Decimal(self.y0_units) * THOUSAND
+        )
+
+    def overhead(self, vsol: int, vtok: int | None = None
+                 ) -> tuple[Decimal, Decimal, Decimal, int]:
+        price = self.spot_price(vsol, vtok)
+        contributions: list[Decimal] = []
+        for st in self.wallets.values():
+            units = st.oh_units()
+            if units <= 0:
+                continue
+            cb = st.cost_basis()
+            if cb is None or cb >= price:
+                continue
+            contributions.append((Decimal(units) / TOKEN_UNITS) * (price - cb))
+        oh = sum(contributions, Decimal(0))
+        x_sol = Decimal(vsol) / LAMPORTS
+        ratio = oh / x_sol
+        if oh > 0:
+            top3 = sum(sorted(contributions, reverse=True)[:3], Decimal(0))
+            conc = top3 / oh
+        else:
+            conc = Decimal(0)
+        return oh, ratio, conc, len(contributions)
