@@ -1,0 +1,30 @@
+[
+ {
+  "create_mayhem_tokens": 429924,
+  "mayhem_disagreements": 0,
+  "no_trade_and_mayhem": 76,
+  "quote_null_active": 285385,
+  "quote_other": 0,
+  "quote_sol": 1070930,
+  "tokens": 1495983,
+  "tokens_with_trades": 1356315,
+  "tokens_without_trades": 139668,
+  "trade_rows": 115811810,
+  "trade_rows_with_null_mayhem": 0,
+  "x0": 30000000000
+ },
+ {
+  "create_mayhem_tokens": 0,
+  "mayhem_disagreements": 0,
+  "no_trade_and_mayhem": 0,
+  "quote_null_active": 923,
+  "quote_other": 34144,
+  "quote_sol": 0,
+  "tokens": 38466,
+  "tokens_with_trades": 35067,
+  "tokens_without_trades": 3399,
+  "trade_rows": 4118366,
+  "trade_rows_with_null_mayhem": 0,
+  "x0": 4292000000
+ }
+]

@@ -7,9 +7,12 @@
 -- Every probe below ran through ONE reusable saved query: the account is at its
 -- private-query cap, so a new saved query per probe returns 402.
 --
--- STATE: A1, B1, C ran.  D (windows 3, 5) failed on a Dune resource limit.
--- A2, B2-cost, E, F are written but NOT run: the API began refusing executions
--- with "would exceed your configured datapoint limit per billing cycle".
+-- STATE (updated 2026-08-20, API restored on a 4,000-credit cycle):
+--   A1, B1, B2, C  ran 2026-08-19.
+--   D windows 3 and 5  ran and PASSED (23.141 + 18.200 credits).
+--   E + F  ran as one pass (3.365 credits).
+--   A2  FAILED: Dune's 30-minute execution limit, 164.755 credits for no result.
+--       The query as written is kept below with the post-mortem attached.
 
 
 -- ===========================================================================
@@ -150,13 +153,24 @@ ORDER BY tokens DESC;
 
 
 -- ===========================================================================
--- A2 — transfers on pump.fun curve tokens.  WRITTEN, NOT RUN.
--- DEX-internal legs are excluded by `outer_executing_account`: a swap's token
--- movement is invoked by the AMM/router program, so restricting to transfers
--- whose outer executing account is NOT a program isolates wallet-to-wallet
--- moves.  The pump.fun program itself is excluded by name.
--- Window deliberately equal in LENGTH to the trade-side anchor (decisions.md,
--- 2026-08-18), which is why both sides read the same date range.
+-- A2 — transfers on pump.fun curve tokens.  RAN 2026-08-20, FAILED at Dune's
+-- 30-minute execution limit after 164.755 credits.  Kept verbatim as the thing
+-- that failed, not repaired here.
+--
+-- EXCLUSION RULE (unchanged): a pump.fun trade moves SPL tokens itself, so the
+-- curve's own legs are dropped by `outer_executing_account`.  Legs invoked by
+-- other AMMs are deliberately kept -- they are real movements of a holder's
+-- balance away from the curve (decisions.md).  `keep` is a column rather than a
+-- WHERE clause so the before/after counts come from one scan.
+--
+-- POST-MORTEM, stated as a hypothesis and NOT measured (measuring it costs
+-- another run): the final SELECT issues twelve independent scalar subqueries
+-- over the `xf` CTE plus a UNION ALL that doubles it.  Trino does not guarantee
+-- a CTE is materialised once, so the 71-day scan of
+-- tokens_solana.spl_token_transfers may have been repeated per subquery.  A
+-- single aggregation pass would be the obvious rewrite.
+--
+-- `_dummy` in the projection is a leftover and should not be there.
 -- ===========================================================================
 WITH sel AS (
     SELECT mint FROM pumpdotfun_solana.pump_evt_createevent
@@ -164,19 +178,66 @@ WITH sel AS (
       AND CAST(virtual_sol_reserves AS bigint) = 30000000000
     GROUP BY mint
 ),
+-- One scan.  `keep` marks the rows that survive the pump.fun exclusion, so the
+-- before/after counts come from the same pass.
 xf AS (
-    SELECT x.token_mint_address AS mint, x.from_owner, x.to_owner, x.amount,
-           x.outer_executing_account
+    SELECT x.token_mint_address AS mint,
+           x.from_owner, x.to_owner,
+           CAST(x.amount AS double) AS amount,
+           x.outer_executing_account AS prog,
+           x.block_slot AS slot, x.tx_index AS txi,
+           coalesce(x.outer_instruction_index,0) AS oix,
+           coalesce(x.inner_instruction_index,0) AS iix,
+           x.outer_executing_account <> '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P'
+             AS keep
     FROM tokens_solana.spl_token_transfers x
     JOIN sel s ON x.token_mint_address = s.mint
     WHERE x.block_date >= DATE '2026-06-06' AND x.block_date <= DATE '2026-08-15'
+      AND x.block_time < TIMESTAMP '2026-08-15 23:59:00 UTC'
       AND x.action = 'transfer'
-      AND x.outer_executing_account <> '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P'
+),
+progs AS (
+    SELECT prog, count(*) AS n,
+           row_number() OVER (ORDER BY count(*) DESC) AS rk
+    FROM xf GROUP BY prog
+),
+-- Per (mint, owner): did it receive before it sent?  min(incoming key) <
+-- max(outgoing key) is a NECESSARY condition for forwarding received tokens,
+-- not a sufficient one: the outgoing amount could be tokens bought on the
+-- curve.  Reported as an UPPER BOUND on chain length.
+own AS (
+    SELECT mint, owner,
+           max(if(dir = 1, k)) AS max_out,
+           min(if(dir = 0, k)) AS min_in,
+           count_if(dir = 1) AS n_out,
+           count_if(dir = 0) AS n_in
+    FROM (
+        SELECT mint, to_owner AS owner, 0 AS dir,
+               (slot, txi, oix, iix) AS k FROM xf WHERE keep
+        UNION ALL
+        SELECT mint, from_owner AS owner, 1 AS dir,
+               (slot, txi, oix, iix) AS k FROM xf WHERE keep
+    ) GROUP BY mint, owner
+),
+per_owner_token AS (
+    SELECT mint, owner, n_in + n_out AS n_xf FROM own
 )
-SELECT count(*)                              AS transfers,
-       count(DISTINCT mint)                  AS tokens_touched,
-       count(DISTINCT from_owner)            AS senders,
-       count(DISTINCT to_owner)              AS recipients,
-       approx_percentile(CAST(amount AS double) / 1e6, 0.50) AS amount_tokens_p50,
-       approx_percentile(CAST(amount AS double) / 1e6, 0.90) AS amount_tokens_p90
-FROM xf;
+SELECT
+    (SELECT count(*) FROM xf)                                   AS transfers_before_exclusion,
+    (SELECT count_if(keep) FROM xf)                             AS transfers_after_exclusion,
+    (SELECT count(DISTINCT mint) FROM xf)                       AS tokens_before,
+    (SELECT count_if(keep) FROM xf WHERE true)                  AS _dummy,
+    (SELECT count(DISTINCT mint) FROM xf WHERE keep)            AS tokens_after,
+    (SELECT count(DISTINCT owner) FROM own)                     AS owners_after,
+    (SELECT approx_percentile(amount / 1073000000000000.0, 0.50) FROM xf WHERE keep) AS amt_over_y0_p50,
+    (SELECT approx_percentile(amount / 1073000000000000.0, 0.90) FROM xf WHERE keep) AS amt_over_y0_p90,
+    (SELECT max(amount / 1073000000000000.0) FROM xf WHERE keep)                     AS amt_over_y0_max,
+    (SELECT approx_percentile(CAST(n_xf AS double), 0.50) FROM per_owner_token)      AS xf_per_owner_token_p50,
+    (SELECT approx_percentile(CAST(n_xf AS double), 0.90) FROM per_owner_token)      AS xf_per_owner_token_p90,
+    (SELECT max(n_xf) FROM per_owner_token)                                          AS xf_per_owner_token_max,
+    (SELECT count(*) FROM own WHERE n_in > 0)                                        AS owners_that_received,
+    (SELECT count(*) FROM own WHERE n_in > 0 AND n_out > 0 AND max_out > min_in)     AS owners_that_forwarded,
+    (SELECT array_agg(ROW(prog, n) ORDER BY n DESC) FROM progs WHERE rk <= 20)       AS top20_programs,
+    (SELECT sum(n) FROM progs WHERE prog = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P') AS pumpfun_rows,
+    (SELECT count(*) FROM progs)                                                     AS distinct_programs
+
