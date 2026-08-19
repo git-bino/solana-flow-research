@@ -363,12 +363,15 @@ wstate AS (
            sum(d_lam_gross)   OVER allh AS all_lam_gross,
            sum(d_basis_units) OVER allh AS all_units,
            sum(d_lam_net)     OVER allh AS all_lam_net,
-           lead(ROW(slot, txi, oix, iix, kind)) OVER allh AS next_key
+           -- `lead` may not carry a frame in Trino, so it uses an unframed window.
+           -- Found by the 2026-08-20 trial run, which failed to plan at 0 credits.
+           lead(ROW(slot, txi, oix, iix, kind)) OVER ord AS next_key
     FROM segd
     WINDOW seg  AS (PARTITION BY mint, wallet, seg_id ORDER BY slot, txi, oix, iix, kind
                     ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
            allh AS (PARTITION BY mint, wallet ORDER BY slot, txi, oix, iix, kind
-                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
+           ord  AS (PARTITION BY mint, wallet ORDER BY slot, txi, oix, iix, kind)
 ),
 -- FIX 3, variant (b): the recipient inherits the sender's basis.
 --
