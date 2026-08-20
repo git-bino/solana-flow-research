@@ -15,14 +15,16 @@ path actually follows: `x_end_slot + cumf[a]` reproduces the exported
 `x_at_plus{5,12,37}` to float precision on all 126,089 rows, while
 `depth_x + cumf[a]` misses on 72.3% of them.  The gap is same-slot trades landing
 after the trigger, median 1.03 SOL, and it is large next to the 0.657 breakeven,
-so BOTH conventions are computed and reported rather than one being chosen:
+so both conventions are computed:
 
-    obs    x2 = depth_x     + V + q + W     the spec's fill algebra taken literally
-    true   x2 = x_end_slot  + V + q + W     the reserve the data actually follows
+    true   x2 = x_end_slot  + V + q + W     PRIMARY -- the reserve the data follows
+    obs    x2 = depth_x     + V + q + W     robustness -- §5's fill algebra literally
+
+`true` is the primary convention (research lead, 2026-08-19); `obs` is kept as a
+robustness check.
 
 The entry fill is `depth_x + V` under both, because that is what §5 specifies and
-what a trader can observe.  Which convention the study adopts is a research
-decision and is left open.  `v_latency_{1,2,3,7,8}slot` is the flow that lands
+what a trader can observe.    `v_latency_{1,2,3,7,8}slot` is the flow that lands
 during latency -- the SQL builds it as `RANGE BETWEEN 1 FOLLOWING AND L
 FOLLOWING`, i.e. exactly the sum of per-slot flows over s+1..s+L, which is
 checked here against the trajectory rather than assumed.
@@ -43,8 +45,11 @@ read the trigger's own buy as "flow has not reversed".  **The rules start at
 a = 3.**
 
     flow reversal   nf3(a) <= 0 on k consecutive ages, exit at the k-th
-    age limit       the literal condition `a > A`, so the exit age is A + 1
+    age limit       exit at a >= A, so the exit age is A itself
     hard stop       price at a <= (1 - L) x the entry price
+
+The age rule was `a > A` (exit at A + 1) when this module was first written; the
+research lead corrected it to `a >= A` on 2026-08-19 and it is recomputed here.
 
 Entry price is the spec §5 fill, avg_price = x_eff (x_eff + q) / k with
 x_eff = depth_x + V, and the price at age a is x(a)^2 / k.  So the stop fires
@@ -221,15 +226,15 @@ def run(c: Cell) -> list[dict]:
     flow_ex = {k: flow_exit(c.traj, k) for k in K_CONSEC}
     rows: list[dict] = []
     gap = c.xend - c.depth
-    for base in ("obs", "true"):
+    for base in ("true", "obs"):
         for lat_name, lat in LATENCY.items():
             V = c.cumf[:, lat]
             for q in Q_SIZES:
                 stops = {L: stop_exit(c, q, lat, L, base) for L in L_STOP}
                 for kc in K_CONSEC:
                     for A in A_LIMIT:
-                        age_ex = np.full(c.n, A + 1 if A + 1 <= TRAJ else 0,
-                                         dtype=np.int64)
+                        # exit AT the limit, not after it (corrected 2026-08-19)
+                        age_ex = np.full(c.n, max(A, FIRST_AGE), dtype=np.int64)
                         for L in L_STOP:
                             a_exit, censored = combine(flow_ex[kc], age_ex, stops[L])
                             W = c.cumf[np.arange(c.n), a_exit] - V
