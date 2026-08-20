@@ -59,6 +59,12 @@ A row where no rule fires by a = 75 is CENSORED: it is priced with a forced exit
 at 75 and counted separately.  Rows are never dropped -- dropping them would be
 survivorship.
 
+NOT-TRADED ROWS (research lead, 2026-08-19).  The entry lands `lat` slots after
+the signal, so an exit rule that fires at or before `lat` describes a position
+that was never opened.  Those rows are marked NOT TRADED: they are excluded from
+the P&L distribution and their share is reported per latency.  They are counted,
+not dropped -- the count is what says how often the rule pre-empts the entry.
+
 Arithmetic
 ----------
 `src.cost_model` is Decimal and exact; 2,160 parameter sets x 126,089 rows is
@@ -240,7 +246,15 @@ def run(c: Cell) -> list[dict]:
                             W = c.cumf[np.arange(c.n), a_exit] - V
                             if base == "true":
                                 W = W + gap
-                            y = net_pnl_vec(c.depth, q, V, W, 0.0)
+                            # An exit at or before the latency slot means the
+                            # position was never opened.  Some (A, latency) pairs
+                            # are untradeable by construction -- A = 5 with an
+                            # 8-slot latency exits three slots before entry -- and
+                            # then no row trades at all.
+                            traded = a_exit > lat
+                            y_all = net_pnl_vec(c.depth, q, V, W, 0.0)
+                            y = y_all[traded]
+                            empty = not traded.any()
                             for pf in PF:
                                 y_pf = y - 2.0 * pf
                                 rows.append({
@@ -248,16 +262,28 @@ def run(c: Cell) -> list[dict]:
                                     "latency": lat_name, "lat_slots": lat, "q": q,
                                     "k": kc, "A": A, "L": L, "pf": pf,
                                     "n": c.n,
-                                    "median": float(np.median(y_pf)),
-                                    "trimmed_mean_10": trimmed_mean(y_pf),
-                                    "p10": float(np.percentile(y_pf, 10)),
-                                    "p25": float(np.percentile(y_pf, 25)),
-                                    "p75": float(np.percentile(y_pf, 75)),
-                                    "p90": float(np.percentile(y_pf, 90)),
-                                    "share_positive": float((y_pf > 0).mean()),
-                                    "a_exit_mean": float(a_exit.mean()),
-                                    "a_exit_median": float(np.median(a_exit)),
-                                    "censored_share": float(censored.mean()),
+                                    "n_traded": int(traded.sum()),
+                                    "not_traded_share": float((~traded).mean()),
+                                    "median": float("nan") if empty
+                                              else float(np.median(y_pf)),
+                                    "trimmed_mean_10": float("nan") if empty
+                                                       else trimmed_mean(y_pf),
+                                    "p10": float("nan") if empty
+                                           else float(np.percentile(y_pf, 10)),
+                                    "p25": float("nan") if empty
+                                           else float(np.percentile(y_pf, 25)),
+                                    "p75": float("nan") if empty
+                                           else float(np.percentile(y_pf, 75)),
+                                    "p90": float("nan") if empty
+                                           else float(np.percentile(y_pf, 90)),
+                                    "share_positive": float("nan") if empty
+                                                      else float((y_pf > 0).mean()),
+                                    "a_exit_mean": float(a_exit[traded].mean())
+                                                   if traded.any() else float("nan"),
+                                    "a_exit_median": float(np.median(a_exit[traded]))
+                                                     if traded.any() else float("nan"),
+                                    "censored_share": float(censored[traded].mean())
+                                                      if traded.any() else float("nan"),
                                 })
     return rows
 
