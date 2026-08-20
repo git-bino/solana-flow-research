@@ -204,3 +204,15 @@ def test_each_mutation_breaks_the_canonical_checks(name, monkeypatch):
         ar._nth_trade_after = _orig_nth
         ar.reserve_after = _orig_reserve
         ar._gini = _orig_gini
+
+
+def test_tertile_cut_is_required_and_none_raises():
+    """The boundary is cross-sectional; silently disabling the filter would make
+    the rule select a different population without saying so."""
+    with pytest.raises(ValueError, match="tertile_cut is required"):
+        apply(F, creator="A", params=Params(tertile_cut=None))
+
+
+def test_the_default_cut_is_the_measured_gini_boundary():
+    assert Params().tertile_cut == pytest.approx(0.267351881)
+    assert Params().tertile_feature == "gini"

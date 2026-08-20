@@ -27,7 +27,9 @@ THE RULE
       (a) t_anchor > 3 s since launch
       (b) the anchor-moment `gini` (or `creator_share`) is in the LOWER tertile.
           The tertile boundary is a CROSS-SECTIONAL quantity -- it cannot be
-          computed from one token -- so it is passed in as `tertile_cut`.
+          computed from one token -- so it is passed in as `tertile_cut`, which
+          is REQUIRED: passing None raises rather than silently disabling the
+          filter.  Measured: gini <= 0.267351881, creator_share <= 0.432181919.
 
     ENTRY  = the 3rd TRADE event after the anchor, priced on the reserve that
              event left.  Fewer than 3 trade events after the anchor -> NOT
@@ -69,7 +71,14 @@ class Params:
     n_holders_target: int = 3
     min_t_anchor_s: float = 3.0
     tertile_feature: str = "gini"        # "gini" | "creator_share"
-    tertile_cut: float | None = None     # upper bound of the LOWER tertile
+    #: Upper bound of the LOWER tertile.  REQUIRED -- `None` raises.  The
+    #: boundary is CROSS-SECTIONAL and cannot be computed from one token, so it
+    #: is measured once and written down (sql/tertile_cutoff.sql, on
+    #: gapin INNER JOIN hfeat INNER JOIN hbar INNER JOIN token_base, mid-rank):
+    #:     gini           t1 = [0.000000000, 0.267351881]
+    #:     creator_share  t1 = [0.000000000, 0.432181919]
+    #: The default is the gini cut, i.e. the frozen configuration.
+    tertile_cut: float | None = 0.267351881
     entry_delay: int = 3                 # trade events after the anchor
     exit_delay: int = 3                  # trade events after the crossing
     target_mult: float | None = 1.76     # None = no target, hold to last trade
@@ -201,11 +210,16 @@ def apply(events: list[Event], creator: str | None = None,
         base.reason = "anchor_too_early"
         return base
 
-    if params.tertile_cut is not None:
-        feat = g if params.tertile_feature == "gini" else cs
-        if feat > params.tertile_cut:
-            base.reason = "not_lower_tertile"
-            return base
+    if params.tertile_cut is None:
+        raise ValueError(
+            "tertile_cut is required: the tertile boundary is cross-sectional "
+            "and cannot be derived from one token.  Measured values are "
+            "gini <= 0.267351881, creator_share <= 0.432181919 "
+            "(sql/tertile_cutoff.sql).")
+    feat = g if params.tertile_feature == "gini" else cs
+    if feat > params.tertile_cut:
+        base.reason = "not_lower_tertile"
+        return base
 
     ei = _nth_trade_after(events, a, params.entry_delay)
     if ei is None:
