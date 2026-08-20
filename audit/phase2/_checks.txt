@@ -1,5 +1,22 @@
 # Аудитын багцын шалгалт — Phase 2, 2026-08-20 21:51 UTC
 
+## ШИНЭЧЛЭЛТ 2026-08-21 (дөрвөн засварын дараа)
+
+нийт хэмжээ:  42M
+нийт файл:   205
+  tests: 20 файл
+  docs: 64 файл
+  src: 50 файл
+  sql: 57 файл
+
+data/holdout: 0 файл; багцад holdout зам 0
+.env багцад: 0
+parquet: 0  npz: 0
+DUNE_API_KEY утга багцад: 0
+
+Өмнөх бүрэн шалгалт доор хэвээр.
+
+
 ## Credential grep
 ```
 audit/phase2/git_log.txt:41:f32730c 2026-08-20 21:53:33 +0800 git-bino capacity: 98% of trades on launch day; 535/launch-day; max 2 concurrent; 10 SOL capital; execution-intensive

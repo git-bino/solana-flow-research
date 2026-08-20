@@ -74,7 +74,7 @@ class Params:
     exit_delay: int = 3                  # trade events after the crossing
     target_mult: float | None = 1.76     # None = no target, hold to last trade
     q: Decimal = Decimal(1)
-    fixed_cost: Decimal = Decimal(0)     # SOL per ROUND TRIP (see docs)
+    fixed_cost: Decimal = Decimal(0)     # SOL PER LEG (charged twice)
 
 
 @dataclass
@@ -229,8 +229,8 @@ def apply(events: list[Event], creator: str | None = None,
 
     q = params.q
     pnl = cost_model.net_pnl(Decimal(str(x_entry)), q, V=0,
-                             W=Decimal(str(x_exit)) - Decimal(str(x_entry)))
-    pnl -= params.fixed_cost
+                             W=Decimal(str(x_exit)) - Decimal(str(x_entry)),
+                             fixed_cost_per_leg=params.fixed_cost)
     base.traded = True
     base.reason = "traded"
     base.entry_idx, base.x_entry = ei, x_entry

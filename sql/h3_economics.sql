@@ -79,8 +79,15 @@ e AS (
     SELECT z.*,
            r20*r20 - 1                          AS raw20,
            r36*r36 - 1                          AS raw36,
-           r20*r20*(1-0.0125)*(1-0.0125) - 1          AS fee20,
-           r36*r36*(1-0.0125)*(1-0.0125) - 1          AS fee36,
+           -- CORRECTED 2026-08-21.  Was `r^2 (1-f)^2 - 1`, which is wrong: the
+           -- fee is taken OUT of the proceeds and ADDED to the outlay, so the
+           -- q -> 0 limit of net_pnl/q is
+           --     r^2 (1-f)  -  1/(1-f)
+           -- not one multiplier squared.  Found while writing
+           -- tests/test_anchor_rule.py; the q = 0.5/1/2 columns used
+           -- cost_model's exact path and were never affected.
+           r20*r20*(1-0.0125) - 1/(1-0.0125)          AS fee20,
+           r36*r36*(1-0.0125) - 1/(1-0.0125)          AS fee36,
            ((((32190000000.0 * 0.5 / (x_a * (x_a + 0.5))) * (r20 * x_a + 0.5) * (r20 * x_a + 0.5) / (32190000000.0 + (32190000000.0 * 0.5 / (x_a * (x_a + 0.5))) * (r20 * x_a + 0.5))) * (1 - 0.0125) - 0.5 / (1 - 0.0125)) / 0.5) AS s20_05,
            ((((32190000000.0 * 1.0 / (x_a * (x_a + 1.0))) * (r20 * x_a + 1.0) * (r20 * x_a + 1.0) / (32190000000.0 + (32190000000.0 * 1.0 / (x_a * (x_a + 1.0))) * (r20 * x_a + 1.0))) * (1 - 0.0125) - 1.0 / (1 - 0.0125)) / 1.0) AS s20_10,
            ((((32190000000.0 * 2.0 / (x_a * (x_a + 2.0))) * (r20 * x_a + 2.0) * (r20 * x_a + 2.0) / (32190000000.0 + (32190000000.0 * 2.0 / (x_a * (x_a + 2.0))) * (r20 * x_a + 2.0))) * (1 - 0.0125) - 2.0 / (1 - 0.0125)) / 2.0) AS s20_20,

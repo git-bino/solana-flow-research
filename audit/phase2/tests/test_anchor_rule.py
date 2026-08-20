@@ -140,11 +140,13 @@ def test_slippage_matches_cost_model_exactly():
     assert float(o.pnl) == pytest.approx(2.935911304, abs=1e-9)
 
 
-def test_fixed_cost_is_subtracted_once_per_round_trip():
+def test_fixed_cost_is_charged_once_per_leg_so_twice_per_round_trip():
+    """Research lead, 2026-08-21: the cost is PER LEG.  0.002 SOL a leg is
+    0.004 SOL on the round trip, which at q = 1 is 0.4% of return."""
     a = apply(F, creator="A", params=Params(fixed_cost=Decimal("0.002")))
     b = apply(F, creator="A")
-    assert b.pnl - a.pnl == Decimal("0.002")
-    assert float(b.ret - a.ret) == pytest.approx(0.002, abs=1e-12)
+    assert b.pnl - a.pnl == Decimal("0.004")
+    assert float(b.ret - a.ret) == pytest.approx(0.004, abs=1e-12)
 
 
 def test_bigger_q_costs_more_on_the_same_path():

@@ -38,7 +38,8 @@
 |---|---|
 | `src/anchor_rule.py` | Хөлдөөсөн дүрэм, бие даан бичигдсэн (шинжилгээний кодоос хамааралгүй) |
 | `tests/test_anchor_rule.py` | 19 тест, гараар бодсон хүлээлт + 4 мутацийн шалгалт |
-| `src/cost_model.py` | Замын арифметик, `fixed_cost_per_trade` параметртэй |
+| `src/cost_model.py` | Замын арифметик, **`fixed_cost_per_leg`** параметртэй |
+| `sql/anchor_rule_parity.sql` | Тоон тулгалт, өөр алгебрийн хэлбэрээр |
 | `src/fill_timing.py` | Fill timing-ийн хуанли; `tests/test_fill_timing.py` 11 тест |
 
 ## Гол баримтууд
@@ -49,7 +50,9 @@
 | `docs/asymmetric_barriers.md` | Асимметр хаалт, overshoot, сүүл |
 | `docs/structural_checks.md` | Migration-ийн тааз, шал, кластер CI, trimming |
 | `docs/fill_timing_audit.md` | Fill timing-ийн кодын аудит |
-| `docs/fixed_cost_matrix.md` | Тогтмол зардлын `q × fixed` матриц |
+| `docs/fixed_cost_matrix.md` | Тогтмол зардлын `q × fixed` матриц, **хөл тутам**, `q` тутмын яг утгаар |
+| `docs/fixed_cost_matrix_v1_round_trip.md` | Түүний **өмнөх** хувилбар (эргэлт тутам), устгаагүй |
+| `docs/anchor_rule_parity.md` | Тоон тулгалтын үр дүн |
 | `docs/holder_anchor.md` | Эзэмшигчийн тооны анкор, first passage |
 | `docs/h3_checks.md` | `gini` vs `creator_share`, censoring, гүйцэтгэх боломж |
 
@@ -59,8 +62,12 @@ parquet, ClickHouse дата, `data/holdout/` (0 файл), credential, `.env`.
 
 ## Нээлттэй асуултууд (удирдагчид тавьсан, өөрөө шийдээгүй)
 
-1. `anchor_rule`-ийн **хэсэг 1 дээрх тоон тулгалт** — `flow.event` 0 мөр тул локал дээр
-   боломжгүй (`11_anchor_rule.md` §0)
-2. `fixed_cost_per_trade` — эргэлт тутам уу, хөл тутам уу (`docs/fixed_cost_matrix.md`)
-3. `q ≠ 1` дээрх пропорциональ хэсгийг яг тооцох уу (~0.2 credit)
-4. `docs/h3_economics.md`-ийн «шимтгэл хассан» баганыг дахин ажиллуулах уу (~0.05 credit)
+**Дөрвүүлээ 2026-08-21-нд хаагдав** (`10_search_trail_phase2.md`, алхам 19):
+
+1. ✅ Тоон тулгалт **хийгдсэн, давсан** — 8/8 нүд, max |Δ| **4.441e−16** (`docs/anchor_rule_parity.md`)
+2. ✅ `fixed_cost_per_leg` — **хөл тутам** (удирдагчийн шийдвэр)
+3. ✅ `q ≠ 1` **яг тооцогдов** — бэхлэлтийн алдаа миний тооцооноос 15–50 дахин том байсан
+4. ✅ `h3_economics`-ийн шимтгэлийн багана **зассан** — зөрүү ≤ 0.08 пункт
+
+**Үлдсэн нэг зүйл:** `decisions.md`-д «+27.09% … +46.51%» гэсэн буруу муж **2 удаа** үлдсэн
+(зөв нь **+27.09% … +53.92%**). Тэр нь удирдагчийн файл тул гүйцэтгэгч **хүрээгүй**.
