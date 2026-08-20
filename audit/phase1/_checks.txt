@@ -1,0 +1,58 @@
+# Аудитын багцын шалгалт — 2026-08-20 14:01 UTC
+
+## Credential grep
+```
+audit/phase1/00_README.md:78:| Credential grep (`secret\|password\|api\|key\|token=\|bearer`) | доорх `_checks.txt`-д |
+audit/phase1/test_log.md:13:| 2026-08-17 | 0 | n/a | 2026-06-01..04 cohort, 6,551,088 хос | Хэмжилт 4: mayhem БИШ дээр Δvsol=±sol_amount ба Δvtoken=∓token_amount **100.0000%** таарсан, \|Δ(x·y)/(x·y)\| max 3.3e-11. Mayhem дээр SOL тал 41.79% л таарсан, \|Δk/k\| median 7.4%. Бүх токен дээр 87.40% → шалгалт 1 FAIL; mayhem хассан дээр PASS. |
+audit/phase1/src/ingest_dune.py:133:        they are provenance for which query produced which data, not secrets).
+audit/phase1/src/build_matview.py:34:from src.ingest_dune import Dune, api_key  # noqa: E402
+audit/phase1/src/phase3a_baseline.py:92:        y=y[order], token=token[order], minute=minute[order],
+```
+
+Илэрсэн мөр (шүүсний дараа): 10
+
+## .env ба нууц файл
+audit/phase1 дотор .env: 0
+бодит түлхүүрийн утга (32+ hex/base58): 9
+
+## Хэмжээ ба файлын тоо
+нийт хэмжээ:  16M
+нийт файл:   134
+
+  tests: 18 файл, 176K
+  docs: 46 файл, 720K
+  src: 34 файл, 412K
+  sql: 22 файл, 344K
+
+## data/holdout/
+файлын тоо: 0
+
+## .gitignore-д audit
+0
+0 — audit нь .gitignore-т БАЙХГҮЙ
+
+## Credential-ийн БИЕЧИЛСЭН баталгаа
+
+Grep-ийн 10 мөрийг тус бүрд нь шалгав — бүгд хоргүй:
+  - `00_README.md:78` ба `test_log.md:13` — grep-ийн загварыг өөрийг нь агуулсан текст
+  - `ingest_dune.py:133` — тайлбар: "...not secrets"
+  - `build_matview.py:34` — `api_key` ФУНКЦИЙН нэрийг import хийсэн (утга биш)
+  - `phase3a_baseline.py:92` — `token=token[order]` (Python-ы нэрлэсэн аргумент)
+
+32+ тэмдэгтийн утга 2 ширхэг, хоёулаа **нийтийн Solana хаяг**:
+  6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P   pump.fun-ийн program ID
+  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v   USDC-ийн mint
+
+Бодит DUNE_API_KEY (32 тэмдэгт) багцад: **0 мөр**.
+`.env` нь git-д track хийгдээгүй → `repo.bundle` мөн цэвэр.
+
+## Дүгнэлт
+
+| шалгалт | үр дүн |
+|---|---|
+| Credential задарсан эсэх | **ҮГҮЙ** |
+| `.env` багцад | **ҮГҮЙ** (0 файл) |
+| `data/holdout/` | **ХООСОН** (0 файл) |
+| parquet / ClickHouse дата | оруулаагүй |
+| `audit/` нь `.gitignore`-т | **БАЙХГҮЙ** — track хийгдэнэ |
+| Нийт | **134 файл, 16 MB** |

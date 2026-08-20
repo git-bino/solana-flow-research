@@ -1,0 +1,135 @@
+2dfe1ff08c8ef9ff6754b7b2ac085a949e94e0e0 2026-08-17 15:43:07 +0800 spec v1.0: initial pre-registered design
+47a930a633d23374d4ce2ffd75af4f6f6f199e9a 2026-08-17 15:43:19 +0800 add pre-registration discipline files (empty)
+dd86d39931992d6bcf239906ec263a5d0b0b43bf 2026-08-17 15:45:33 +0800 spec v1.1: primary cell, two-part Phase 3 kill, power analysis, stratified hazard, exit asymmetry, embargo
+1c615970e8ea48e58a30e455031569ae2a51450a 2026-08-17 15:47:24 +0800 add Codex code-review prompt
+e5a6bcf9a94aab63c9b485fd5a12398c1fe88a0e 2026-08-17 17:02:06 +0800 Phase 0: pre-register prompt, curve math, storage and validation scaffolding
+bca94f9fecc7e7043f1c6cc238b69265345c8b98 2026-08-17 17:04:44 +0800 Phase 0: record pre-registration decisions (window, holdout, ordering, units)
+e05eb62cabea6aa3bdb33b88e1358c1b55923897 2026-08-17 18:49:21 +0800 Phase 0.1: size, credit and disk estimate from a 3-day launch cohort
+bc6e8256c2cf762fd405839912d203de8bb7bfad 2026-08-17 19:26:08 +0800 Phase 0: four measurements (burst-token share, mayhem timing, reserve series)
+fbc14ec3f0c19a2a074aea959e8846e72a3cae62 2026-08-17 20:19:06 +0800 spec v1.2: empirical y0 and fees, NET sol_amount, direct reserve read, slot-based windows, mayhem as stratum, Check 1 split into 1a/1b/1c, Codex removed
+b3f9a92bc8f135dd172a6141a267d1e0be97e581 2026-08-17 21:06:47 +0800 Phase 0.1: BigQuery dry_run measurement of the Solana public dataset
+e01df93d4061bb0c15a3108f30f4411308ac646b 2026-08-17 21:12:20 +0800 decide: BigQuery becomes primary source; pre-register ordering-key rule
+fb91b001ce5619037694db01858b10edcfc9c21c 2026-08-17 21:20:43 +0800 Phase 0: BigQuery ordering-key probe - `index` is transaction-scoped
+25569fb6340986d46290e0df3967fae9257dee7a 2026-08-17 21:27:16 +0800 decide: Instructions path rejected (no inner ix); pre-register log_messages thresholds
+9391ab51d6c85c0a01ef12e781a1306e8cb982b5 2026-08-17 21:58:28 +0800 decide: Instructions path rejected (no inner ix); pre-register log_messages thresholds
+bc0befd0a20bbb92d0c9ff739c19b664f417e843 2026-08-17 22:08:16 +0800 Phase 0: BigQuery log_messages path probe - the column is empty
+f6b5837fbd3023f0d09161058dd9925fbc91bdd8 2026-08-17 22:14:47 +0800 decide: BigQuery excluded (no inner instructions in dataset); quarantine balance_changes path
+70ba3a8e4b75b562ed4abaa5ea931c26127bfa49 2026-08-17 22:18:51 +0800 pre-register: age-cutoff selection rule (before burst inventory)
+4963cc9232f9b8705f397297f9bf1e4bdcd4f545 2026-08-17 22:39:31 +0800 Phase 0: burst inventory - age x mayhem cross-tab
+fcd13dda0c5a72b327d336c652cd3e51f6ed80ac 2026-08-17 22:50:40 +0800 decide: age cutoff N=5 (rule applied, purpose failed); flag scan-vs-export cost split
+aa178e72e2d3a7225c6b2bd21fe644331e72c960 2026-08-17 23:17:20 +0800 Phase 0: measure Dune's cost structure - scan vs export separated
+2681661962b5363909ab304c881154f7365ff071 2026-08-17 23:22:37 +0800 measure: Dune cost function; burst-only export fits Free; pre-register conditional reversal of N=5
+85e166f36c5f5d677ff1c913159ce45d23e95f99 2026-08-17 23:52:28 +0800 Phase 0: prove f7 (OH_ratio) is expressible in Dune SQL, matching a Python reference
+47950e43f7f80611260bf6e5b13796d06e42f180 2026-08-17 23:57:19 +0800 decide: OH feasible in Dune SQL (88/88 parity); burst-only architecture; N=5 reverted to inf; holdout split at extract
+41738818b315a753fd4f47cdd5d174335fe21607 2026-08-18 00:16:56 +0800 Phase 0: full extract-schema inventory and width measurement
+b48c1354c98f36dae158de544c03a4417e2d7848 2026-08-18 00:25:46 +0800 decide: export trajectory (discipline over credits); slot-index required; fix oh_conc and chunk to 30d
+66b88a6513c4a050fc3b05d93735ccb5b0eb0c84 2026-08-18 00:44:26 +0800 Phase 0: fix the trajectory index and oh_conc NULL, then re-measure
+4ec1c3f3e99ad81eba95dc098f9f8449fe903df2 2026-08-18 00:54:49 +0800 verify: trajectory parity 6600 elements; found nf3 empty-slot defect; log slot conventions
+7e3494804fccc03a20933a558cd8ae1d1b523a6b 2026-08-18 01:15:53 +0800 Phase 0: fix nf3's empty-slot defect and recompute the hazard diagnostics
+0cb90274a9ed16b53ceda8bad6d56f116accbc71 2026-08-18 01:29:18 +0800 decide: incl_pre window convention for nf3 (definitional consistency); log diagnostic exposure
+a699ab2f9c05b01406b7344d34a67aabeb29f25a 2026-08-18 01:56:11 +0800 Phase 0: write the §8.2 requirement-8 test suite - 94 tests, 91 pass, 3 fail
+b7370901137f05e0a8ee33335ed829a0c34677b5 2026-08-18 02:00:05 +0800 found: intra-slot lookahead in f3/f8/f9 + NULL buyer bug; test suite justified empirically
+0c1b57cdd0cb431203f66eb3cd4e6f85245a1229 2026-08-18 02:19:27 +0800 Phase 0: fix f3/f8/f9 intra-slot lookahead and the NULL buyer; audit all 35 windows
+248dcc6a5a69ba81e848fdf661287878a8dae0e2 2026-08-18 02:25:40 +0800 decide: label boundary is the trigger row (Finding 4 resolved); f3/f8/f9 lookahead fixed
+8d6def77e362b9de80cadaf49f29ff516e308f4d 2026-08-18 02:38:09 +0800 Phase 0: align label boundaries to the trigger row; optimise f3 (116s -> 22.1s)
+e3c853a89dee0d6fd997b4c6b7f4f77ccfbb35a4 2026-08-18 02:41:44 +0800 decide: trajectory boundary is correct as-is; 10-day chunks; pre-register extract execution rule
+09c04961ff640ae4f847ccded8b798d724dc1b9d 2026-08-18 03:02:51 +0800 spec v1.3: burst-only architecture, row-level boundaries, N=inf, holdout split at extract
+11aed399bd693bae781fd6a0207b75ec55a4a82c 2026-08-18 03:13:54 +0800 Phase 0 extract chunk 1: stopped - quote_mint is NULL before 2026-05-21
+fded7e2dfdf85e3cca82b6fbf580fc94f71f01cb 2026-08-18 03:26:02 +0800 Phase 0 extract: dev chunk 01 complete - 133,877 burst rows, 481.94 credits
+42a15f183ece7db45d3698829edcff5b691d0a45 2026-08-18 03:31:42 +0800 decide: quote_mint NULL=SOL pending verification; excl_pre array reduced to 2 scalars; chunk 1 done
+a7366cebcff184feb0f1167ad49b55995e98302c 2026-08-18 03:41:45 +0800 Phase 0: verify the quote_mint NULL = SOL reading - PASS
+cb3b03e51f36a4f5667ba41d273429d8fddd9d90 2026-08-18 03:46:43 +0800 verify: quote_mint NULL=SOL passes; pre-register createevent-based quote filter rule
+140b5ff5ce71395db2260ca5416ce23b9fbf19fd 2026-08-18 03:53:21 +0800 Phase 0: createevent's declared initial reserve determines the quote asset
+33a13f21c4f0fb1955216420f5a918691d45a871 2026-08-18 03:57:05 +0800 verify: createevent x0 discriminates quote perfectly; chunk 1 clean; correct decoder-lag claim
+d0750c0855e86d7ad3441e2e18df8cbda247f8e9 2026-08-18 04:06:48 +0800 Phase 0: reduce the excl_pre trajectory to two scalars; move the quote filter to declared x0
+cfab62e4606e3f4cd8c7911aefdb906743cf4afb 2026-08-18 04:10:05 +0800 verify: schema reduction proven on 9.77M elements; quote discrimination holds in chunk 2 window
+011c5d08697e448675d896c8b0fb5c3050912e82 2026-08-18 04:30:10 +0800 extract chunk 2: align chunk 1 to the authoritative schema (v3), run chunk 2
+865e403f1a89ee19c36f5a9d086ec732586be304 2026-08-18 04:34:23 +0800 record: chunk 2 done (305 cr); pre-register sequential stop rule for chunks 3-7
+8556d00dfe6aff6470e7ebc82f68e4efd26c9c8b 2026-08-18 13:52:27 +0800 extract chunks 3 and 4, with the mechanical stop rule
+0f978aed358ca6e8bcb92d9738ab216a83d5718e 2026-08-18 14:16:42 +0800 record: chunks 3-4 done; correct the phantom execution anomaly; declare canonical schema fix at load
+aca086d9ae7bd73bac000d91ebfd5bdc5f74bbb1 2026-08-18 14:52:18 +0800 extract chunk 5, chunk 6 execution, and the canonical extract schema
+3497aa21b4afe139d148431d065c649e20206645 2026-08-18 14:59:14 +0800 complete chunk 6; mechanical rule stops before chunk 7
+3c6cc4327ce28315d3c67f11672fd71e6e2bbbea 2026-08-18 15:05:36 +0800 record: dev extract complete (667,809 rows, chunk 7 becomes embargo); canonical schema locked
+342790d7af4ceb24ee9c6328445c0282abdf3f1a 2026-08-18 15:19:05 +0800 kill gate: windows 1-2 PASS; select windows 4,6; pre-register 3,5 for Aug-31; log mayhem structure
+0a5281d042cc64619e88552855b212eef50b3741 2026-08-18 15:31:32 +0800 Phase 0 KILL gate: 1a/1b/1c pass on all four measured windows
+dd5c32366f04efb6ca45ce323c0785f2cda9d17b 2026-08-18 15:43:57 +0800 KILL GATE PASSED: 43.2M pairs, zero mismatches; open question on k for mayhem P(t)
+35c069359cb3b83245fd46633110f42003dc010f 2026-08-18 15:59:02 +0800 establish the source of k in P(t): launch k, in both SQL and Python
+c8a35ba649a01a979e2c478c546d78cc86cb5f97 2026-08-19 02:36:54 +0800 found: P(t) uses launch k; spec 1.1/1.2 conflict; non-mayhem unaffected, mayhem patch deferred to Aug-31
+6c73002a2c6c1c5dcdb3e4f74d8348a5b266d356 2026-08-19 03:04:28 +0800 load the 667,809 burst rows into ClickHouse as flow.burst
+9f3c4a56be531e7e6062e34c6730475bcce56667 2026-08-19 03:09:30 +0800 load: 667,809 rows into ClickHouse; mandate UTC in all queries; harden attribution rule
+e301c958643add4dd30f820f7085ef3585007b02 2026-08-19 03:35:55 +0800 Phase 3a: baseline distribution and power analysis -- power >= 80%
+0cbbd096bdfaacc1c21520727c86897f69067950 2026-08-19 03:51:03 +0800 3a: power sufficient (MDE 0.126 vs threshold 1.634); lock criterion (ii) V=p75, ceil slots, row-level deciles; audit before 3b
+364ed848da5b7cfc9c1a325ca43a707fb1289080 2026-08-19 04:08:44 +0800 assemble the §8.3 audit bundle for Phase 0 and 3a
+83fc54f99912d24899de202369eedd7423302c09 2026-08-19 04:55:58 +0800 AUDIT: 3b halted; Phase 0 status revoked; BE formula wrong, ix_index packing unproven, OH ledger incomplete
+2418b11df36d538bdda0f5558179fceff38ede40 2026-08-19 04:56:17 +0800 audit: freeze governing spec hash, decisions patch history, repo bundle
+08b5f5dbb276e03fa88ccb9b2b8260669327257d 2026-08-19 05:11:46 +0800 measure the prevalence of the three mechanisms the external audit raised
+06e272a6e67649f29a3b8a9016187f8985abff19 2026-08-19 05:28:12 +0800 measure: mechanism prevalence; revert label boundary to slot s+1 (reachability, not symmetry)
+8040be9235d344bb247827dbfd245b6cef1213a1 2026-08-19 05:58:08 +0800 Phase 1: derive the cost model from the exact reserve path
+606f5090e714d5ced2abaf22416fa318f56070ad 2026-08-19 06:54:56 +0800 Phase 1: exact-path cost model (old formula overstated 1.4-10.9x); criterion (ii) now row-level; power invalidated
+a55d1aa52d91fa6193cfa3b41a6157fe6e7832f2 2026-08-19 07:09:40 +0800 extend the synthetic generator and add regression tests for each audit finding
+30e22c96a965a88d4b969325c44a23f677ceae39 2026-08-19 14:14:49 +0800 split decisions ledger at 2026-08-19 (knowledge file size limit)
+8296a73fb99bee68d9d69a74c033214b333a0182 2026-08-19 14:17:49 +0800 tests: 17 audit-finding regressions (2 xfail strict); F1 finds 6 unexercised generator params; Decimal context leak
+3e7218fe86fcdc658648b7cdbe723f337a6a1872 2026-08-19 15:01:02 +0800 fix the test infrastructure, close the parameter gap, reconstruct per-slot flow
+e32899632e57e6e44c02a4a7cd772f78b403b2a6 2026-08-19 15:07:07 +0800 measure: 81.3% of labels contaminated by same-slot suffix; median flips to -0.121; buy Analyst to close design
+f47f68d0e771fcd19f7999ce0ddb8bb5cad476d6 2026-08-19 17:49:33 +0800 probe the re-extract design: transfers and balances exist, packing is clean
+fba81bc7f9c10e493e9db29c473e1826dde8d037 2026-08-19 17:55:23 +0800 measure: SPL transfers available (owner-level) -> ledger path A; drop ix packing for raw tuple; limits blocked run
+e48725c27b0db6c1dfbc82c1f9cec9cf97670266 2026-08-19 18:04:00 +0800 record that the Dune datapoint block is still in force
+3005842f503af5de183528651674441a5b72b2d3 2026-08-19 18:38:29 +0800 rewrite the extract as v2 with every audit fix
+f92d7d9331d6170dacbeb4a236f54f77e844cd20 2026-08-19 18:48:06 +0800 pre-register: oh_a primary (exact in SQL), oh_b robustness; extract_v2 written (80 cols, 7 fixes)
+a46876d58e7f5ad77258c749d4c5dacb63a5069c 2026-08-20 02:25:27 +0800 validate the 3b bootstrap by simulation: the CI is conservative, the power holds
+9d381aea8a7e89de498f61c707e7114ec32770b5 2026-08-20 02:31:54 +0800 validate: cluster bootstrap over-conservative but retained; power confirmed (0.93 at MDE); B=2000 primary
+51249fcca3f5255a688d5396f03a47c10ed98bf1 2026-08-20 02:58:41 +0800 audit clean-up: mayhem split, attribution corrections, atomic log
+cb49c27a4dc5a4de32907d93dc72ed03dafe15ea 2026-08-20 03:01:55 +0800 measure: contamination 82.5% on non-mayhem, median flips to -0.049; attribution and test_log atomicity closed
+34b289ed7e857023a70d61fb9f212cc1cf119c66 2026-08-20 03:52:12 +0800 close D, E and F; A2 fails on Dune's 30-minute limit
+fda15dee85e58e6e12a2dcff0fa60411dfb9005b 2026-08-20 03:55:52 +0800 KILL gate complete (72.5M pairs, 6 windows); E/F close coverage critique; A2 timed out, folded into extract_v2 trial
+3ba33acd0d649efa23c07db834b47e67680cc4f8 2026-08-20 04:25:44 +0800 trial-run extract_v2 on one day: it works, and it has two defects
+7689542f1c6549bfde0cfbacf82628f90523b15a 2026-08-20 08:07:06 +0800 found: nf5 computed over 4 slots (burst set shifted); transfers need one-time materialization; defer holdout
+645fcbd7fd26e06c19f52ee1eec2c76686b9fe0d 2026-08-20 08:35:19 +0800 fix nf5, reconcile against v1 exactly, run parity, plan materialization
+86de77c8503aefb3f0f99823d36d8ddd210c23f7 2026-08-20 08:43:56 +0800 verify: nf5 fix confirms exact burst-set match; oh_a parity blocker (2 rows); materialization chunked at ~45cr
+f824662fb3fed7716f93cae3585544d28021ebda 2026-08-20 09:01:43 +0800 diagnose the oh_a parity gap: a buy made while short
+9c763d561d574946f110ab088c46825871e21f53 2026-08-20 09:04:56 +0800 diagnose: oh_a parity gap is negative-held buy after transfer; decide SQL rule (new position) is correct
+76adefa0c2d6569b1872327fb9354d69c62c9521 2026-08-20 09:20:36 +0800 align the Python ledger to the SQL negative-held rule; size the transfer output
+4b3157a313d887321435af43b795e7dc25011859 2026-08-20 09:25:13 +0800 parity closed (oh_a 0/88 semantic); transfer output only 447k rows / 0.071 GB; materialization blocked on query privacy
+981ba4d206c166b10f8c79d4024e397209be9156 2026-08-20 10:14:08 +0800 transfer materialization: STOPPED — query_<id> is a view, not a table
+3429aaffe07138e0d9d3891e036ccf024bbb9d3b 2026-08-20 10:18:00 +0800 found: query_<id> is a view; materialized views are the answer (docs.dune.com); revise transfer estimates
+3cb369a6363cf07985860bb3fbb7016351c76f41 2026-08-20 11:13:27 +0800 matview confirmed as real table; 3 refs = 1 ref (no restructure needed); transfer window is 98 days; cancels are billed
+34647fce5b9c6e3590dd080c705ea4e181005f89 2026-08-20 12:47:52 +0800 rule: never cancel executions (Dune failures cost 0, cancels bill full); raise materialization budget to 400
+17da5035157571df88bbf977d8456fe0be97d189 2026-08-20 14:58:27 +0800 transfer matviews: 17 tables, 1,773,265 rows, full 98-day window
+2a9c606e957ac1d46244bd380dac549e8418a701 2026-08-20 15:01:55 +0800 matviews complete (1.77M rows, 39MB, 140cr); union read costs 0.33cr; defer holdout, one-day trial next
+ff314023a26414d018de08519c381adbe0e195c7 2026-08-20 15:26:05 +0800 trial: burst set unchanged, oh_a≈oh_b (99% float noise), transfers 0.32% of units; correct negative-held diagnosis
+6ddbdebc251369e10ff6e17c9759180cda74f46d 2026-08-20 15:37:49 +0800 extract_v2 with transfers on a one-day cohort: 8,697 rows, 86.4 credits
+159282af01cf528ea672c72011e167c17c11f699 2026-08-20 16:02:27 +0800 trial: oh_a≈oh_b (13 rows), negative-held unexplained by transfers; ON/OFF byte-identical needs resolving before extract
+690cfefd447c542df766e1c6ceebf8a4468d4b18 2026-08-20 16:22:15 +0800 transfer ON/OFF: no contradiction — transfers are applied
+5f8467321230b6142fe976f54cd9073ad4736648 2026-08-20 16:47:58 +0800 resolve ON/OFF (transfers do apply); KILL gate proves negative-held is attribution, not missing data; schema check before extract
+7f25e0c5fc07a5b20d1c97fc43a772d7bdb410c0 2026-08-20 17:12:35 +0800 trade event address fields: `user` is the best key available
+a18d1dfe40a25de0f517cfdbd6ff814befa7d020 2026-08-20 17:16:52 +0800 user-field hypothesis rejected (signer is worse); 56% of negatives start with sell; schema frozen, extract next
+40cefb4489ce73d73c26dcbfc5923f22757d8025 2026-08-20 17:44:19 +0800 dev extract v2 chunk 1: 133,877 rows, exact v1 match, then STOP
+17605454358264bd855c827f700be1a129af479e 2026-08-20 17:54:39 +0800 pre-register three-stage design: chunk 1 = screening, chunks 2-6 = confirmatory; futility rule before looking
+47438102466fc4d96e7f9144e5506b6162a3d813 2026-08-20 18:01:22 +0800 Phase 3b screening: CI inside the futility band — STOP
+c29e1f08e3c7756f8eae69624a10faa34dd93e94 2026-08-20 18:21:30 +0800 SCREENING STOP: d10 median 0.000 vs breakeven 0.657; kill (i) passed, kill (ii) failed; no Plus purchase
+8c71320f13a74ade87335a0da679c66b156d71a8 2026-08-20 18:22:48 +0800 pre-register: post-kill(ii) work status — cannot reverse the stop, runs on screening sample
+16019bbe8a899a64ec2d3322824657a5390b8fb5 2026-08-20 18:34:23 +0800 hazard 3c/3c-bis: the median death age is the trigger window leaving
+5884cdf85a9f1b818ca76405f0a34be40a457da1 2026-08-20 18:39:41 +0800 3c: hazard measures nf3 memory (30.9x jump at a=3); 3c-bis sign flips under size conditioning, effect < 1 slot
+e10f6200534b78db1ea4573edee60946d67e2262 2026-08-20 18:43:19 +0800 MODE SWITCH: confirmatory -> exploratory; search object is fwd_net_ret with exit rules, not raw flow median
+3e989bf930b1440b028f36405360940326da2ee5 2026-08-20 18:59:11 +0800 fwd_net_ret machine + unconditional baseline: 4,320 parameter sets
+ff18a89679ef5935002ccbb7c0155fd61e8b20aa 2026-08-20 19:02:41 +0800 conventions: q grid from spec, x_end_slot base (3 reasons), exit at a=A; baseline max is selection noise
+5bc18cbaa7c281aea139894f6765024257b66930 2026-08-20 19:12:15 +0800 exploratory search 01: parameter marginals, 10 feature filters, combination
+87c64282cbc68679384efd7f9e88c791136f0480 2026-08-20 19:26:45 +0800 consolidate: §3e sequencing + rug defs; search-01 blocker and null result; f4=f5; posture shift to launch-window edge
+d38822a70deae9f485ad1acdd49be045e97d9172 2026-08-20 19:34:37 +0800 not-traded correction applied; stop rule fired, launch measurement not run
+2cd14dff50e59f1fc8bee4041af196883e125c2e 2026-08-20 19:39:06 +0800 blocker closed (selection shift, matched sample correct); q criterion per-unit at pf=0; launch analysis via Dune aggregates
+995d7adf809b214f768e835a313fda95fc7c1124 2026-08-20 19:58:01 +0800 REFRAME: identify profitable tickets, not average over all; expectancy replaces median; 5-stage wallet program pre-registered
+88381fb74caa8cc1e2855e8602480bdf00be69c4 2026-08-20 20:19:16 +0800 stage 0: tail concentration and expectancy — CONTINUE, both kill conditions fail
+1bcfd63a5adc667c30a0062c2e8cb63cdd7b12ca 2026-08-20 20:25:14 +0800 Stage 0: CONTINUE — expectancy flips sign, median was wrong metric; 3 mandatory checks before accepting +0.62
+702c53cdd13f035776332217e4c6ae91aa9cf2a3 2026-08-20 20:35:53 +0800 stage 0 checks: all three pass
+1c1816940188ca86fa4ad920e4bdbb8d1807cf78 2026-08-20 20:39:21 +0800 Stage 0 checks all PASS (tail robust to 10%, q convex, bootstrap conservative); exit latency untested
+a7325b8a531e3ef1c8f4413bca6ac47cef3f8496 2026-08-20 20:50:00 +0800 exit latency: §5.1 asymmetry confirmed in direction, modest in size
+fd8955a8f0b6f1bc608d1c6a47ab82e4f6a43931 2026-08-20 20:53:48 +0800 exit latency costs only 4.35% (not a speed race); profit concentrates in age-limited exits, not 1-slot
+db4cf50b460e1c406c1a2bcbeca1ced573f6183e 2026-08-20 21:04:36 +0800 age limit curve: flat across A, with the mechanism redistributing
+2bd7c6f01e9be38f88ce7ce2daf739c4db8579d6 2026-08-20 21:09:11 +0800 A is inconsequential (2.92% range, CIs overlap): drop age limit, A=75; test L_stop next
+85dd34f3b0bd35860eecd8c8817693eaac93501c 2026-08-20 21:20:39 +0800 L_stop and k curves: L_stop's entire effect is selection
+71b17192fc546f2c424b64b9122ffe0925ccb3f5 2026-08-20 21:25:42 +0800 L_stop dropped (matched sample identical, grid-edge argmax = selection); k=1; final rule has ONE parameter
+5d89f72f5769ddc1988f082348f2b757bde967c6 2026-08-20 21:28:58 +0800 search halted at 19,627 tests; rule frozen with 1 parameter; §3e and Stage 1 deferred; move to confirmation prep
+2ebea4daefe883d0e6a446a7f76f43ed516acf56 2026-08-20 21:40:25 +0800 freeze the rule, count the confirmation cost
+d973bf972c2373ef414b434b4cd791b02892a35c 2026-08-20 21:44:22 +0800 correct rule statement (strict: no flow break during wait); expectancy bar is zero; pick option (в′) 415cr; capacity still unmeasured
+c5ad2c7fd52bdda49003a41105565800acca6c1c 2026-08-20 21:50:23 +0800 capacity: 98% of trades land on the token's own launch day
+f32730c3182f85983b874d218c9db7cfbff5d9e8 2026-08-20 21:53:33 +0800 capacity: 98% of trades on launch day; 535/launch-day; max 2 concurrent; 10 SOL capital; execution-intensive
