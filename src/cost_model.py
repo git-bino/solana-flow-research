@@ -34,7 +34,23 @@ what reaches the curve, so the wallet spends `q/(1 − f)`.  On exit the curve p
 `x₂ − x_f` and the wallet keeps `(x₂ − x_f)·(1 − f)`.  Priority fee / tip is `pf`
 SOL on each side.
 
-    net P&L = (x₂ − x_f)·(1 − f) − q/(1 − f) − 2·pf
+FIXED COSTS (added 2026-08-21).  Everything above is PROPORTIONAL to `q`.  A real
+round trip also pays SOL that does not scale with size:
+
+    ATA rent            ~0.002 SOL   (refundable, but paid first)
+    base signature fee   0.000005 SOL x 2 transactions
+    priority fee / tip   0 … 0.001 SOL
+
+`fixed_cost_per_trade` is that total, in SOL, PER ROUND TRIP -- one entry plus
+one exit, not per leg.  (The task's grid {0, 0.0005, 0.001, 0.002, 0.005} and its
+components -- ATA rent once, signature fee "x 2 транзакц" -- are round-trip
+totals.  Read per LEG instead, every figure in docs/fixed_cost_matrix.md doubles;
+the ambiguity is flagged there rather than silently resolved.)
+
+Because it is fixed, its effect on the RETURN is `fixed / q`: at q = 0.05 SOL a
+0.001 SOL cost is 2% of the position.
+
+    net P&L = (x₂ − x_f)·(1 − f) − q/(1 − f) − 2·pf − fixed_cost_per_trade
 """
 
 from __future__ import annotations
@@ -78,15 +94,21 @@ def gross_sol_out(dy: Decimal, x2: Decimal, k=K_DEFAULT) -> Decimal:
     return dy * x2 * x2 / (k + dy * x2)
 
 
-def net_pnl(x_obs, q, V=0, W=0, fee_rate=FEE_RATE, pf=0, k=K_DEFAULT) -> Decimal:
-    """Net P&L in SOL of the full path.  See the module docstring for the steps."""
+def net_pnl(x_obs, q, V=0, W=0, fee_rate=FEE_RATE, pf=0, k=K_DEFAULT,
+            fixed_cost_per_trade=0) -> Decimal:
+    """Net P&L in SOL of the full path.  See the module docstring for the steps.
+
+    `fixed_cost_per_trade` is SOL per ROUND TRIP and is subtracted once; it does
+    not scale with `q`, so it costs `fixed / q` of return.  Default 0 keeps every
+    earlier result identical.
+    """
     x_obs, q, V, W = _d(x_obs), _d(q), _d(V), _d(W)
     f, pf, k = _d(fee_rate), _d(pf), _d(k)
     x1 = x_obs + V
     dy = k / x1 - k / (x1 + q)
     x2 = x1 + q + W
     out = gross_sol_out(dy, x2, k)
-    return out * (1 - f) - q / (1 - f) - 2 * pf
+    return out * (1 - f) - q / (1 - f) - 2 * pf - _d(fixed_cost_per_trade)
 
 
 def net_pnl_path(x_obs, q, V, w_steps, fee_rate=FEE_RATE, pf=0, k=K_DEFAULT) -> Decimal:

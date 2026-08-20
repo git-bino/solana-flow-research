@@ -1,0 +1,66 @@
+# Аудитын багц — Phase 2: ЭЗЭМШИГЧИЙН АНКОР БА АСИММЕТР ХААЛТ
+
+Бие даасан аудиторт зориулав. `audit/phase0/` дизайныг, `audit/phase1/` **19,627 тестээс
+нэг дүрэм сонгосон явцыг** шалгуулсан. Энэ багц нь **19,627 → 23,065 хүртэлх явц** ба
+`anchor_rule` дүрмийг шалгуулах материал.
+
+Аудитор чатны түүхийг харахгүй тул багц дангаараа ойлгомжтой байхаар цуглуулагдсан.
+
+**Энд дүгнэлт ба өмгөөлөл байхгүй.**
+
+---
+
+## Хаанаас эхлэх
+
+| дараалал | файл | нэг мөр |
+|---|---|---|
+| 1 | `10_search_trail_phase2.md` | Phase 1-ийн аудитаас хойших 18 алхмын хугацааны дараалал, 8 эргэлт, аудит 2-ын 3 блоклогч |
+| 2 | `11_anchor_rule.md` | Эцсийн дүрэм үгээр ба псевдокодоор, бүх тоо, **12 мэдэгдэж буй сул тал** |
+| 3 | `_checks.txt` | Багцын шалгалт: credential, хэмжээ, holdout, .gitignore |
+| 4 | `spec.md` | Үйлчилж буй тодорхойлолт |
+| 5 | `GOVERNING_SPEC_SHA256.txt` | Spec-ийн SHA256 ба Phase 1-тэй ижил эсэх |
+| 6 | `decisions.md` | Шийдвэрийн бүртгэл (одоогийн) |
+| 7 | `decisions_archive_phase0.md` | Шийдвэрийн архив, Phase 0 |
+| 8 | `test_log.md` | Тестийн бүртгэл, алхам тутам |
+| 9 | `test_log_atomic.md` | Атомик мөрүүд, 1,056 мөр |
+| 10 | `git_log.txt` | Бүх commit, огноо, зохиогч |
+| 11 | `git_log_p_decisions.txt` | `decisions.md`-ийн өөрчлөлтийн түүх |
+| 12 | `repo.bundle` | Бүх ref бүхий git bundle (39 MB) |
+| 13 | `pytest.ini` | Тестийн тохиргоо |
+| 14 | `docs/` | 62 файл — хэмжилт тутмын тайлан |
+| 15 | `src/` | 50 файл — бүх код |
+| 16 | `sql/` | 56 файл — бүх query |
+| 17 | `tests/` | 20 файл — бүх тест |
+
+## Дүрмийн код
+
+| файл | нэг мөр |
+|---|---|
+| `src/anchor_rule.py` | Хөлдөөсөн дүрэм, бие даан бичигдсэн (шинжилгээний кодоос хамааралгүй) |
+| `tests/test_anchor_rule.py` | 19 тест, гараар бодсон хүлээлт + 4 мутацийн шалгалт |
+| `src/cost_model.py` | Замын арифметик, `fixed_cost_per_trade` параметртэй |
+| `src/fill_timing.py` | Fill timing-ийн хуанли; `tests/test_fill_timing.py` 11 тест |
+
+## Гол баримтууд
+
+| файл | нэг мөр |
+|---|---|
+| `docs/execution_gap.md` | Саатлын зай, засварласан E[ret], давтамж |
+| `docs/asymmetric_barriers.md` | Асимметр хаалт, overshoot, сүүл |
+| `docs/structural_checks.md` | Migration-ийн тааз, шал, кластер CI, trimming |
+| `docs/fill_timing_audit.md` | Fill timing-ийн кодын аудит |
+| `docs/fixed_cost_matrix.md` | Тогтмол зардлын `q × fixed` матриц |
+| `docs/holder_anchor.md` | Эзэмшигчийн тооны анкор, first passage |
+| `docs/h3_checks.md` | `gini` vs `creator_share`, censoring, гүйцэтгэх боломж |
+
+## Юу ОРООГҮЙ
+
+parquet, ClickHouse дата, `data/holdout/` (0 файл), credential, `.env`.
+
+## Нээлттэй асуултууд (удирдагчид тавьсан, өөрөө шийдээгүй)
+
+1. `anchor_rule`-ийн **хэсэг 1 дээрх тоон тулгалт** — `flow.event` 0 мөр тул локал дээр
+   боломжгүй (`11_anchor_rule.md` §0)
+2. `fixed_cost_per_trade` — эргэлт тутам уу, хөл тутам уу (`docs/fixed_cost_matrix.md`)
+3. `q ≠ 1` дээрх пропорциональ хэсгийг яг тооцох уу (~0.2 credit)
+4. `docs/h3_economics.md`-ийн «шимтгэл хассан» баганыг дахин ажиллуулах уу (~0.05 credit)

@@ -1,0 +1,110 @@
+# Аудитын багцын шалгалт — Phase 2, 2026-08-20 21:51 UTC
+
+## Credential grep
+```
+audit/phase2/git_log.txt:41:f32730c 2026-08-20 21:53:33 +0800 git-bino capacity: 98% of trades on launch day; 535/launch-day; max 2 concurrent; 10 SOL capital; execution-intensive
+audit/phase2/git_log.txt:72:7f25e0c 2026-08-20 17:12:35 +0800 git-bino trade event address fields: `user` is the best key available
+audit/phase2/git_log.txt:164:fb91b00 2026-08-17 21:20:43 +0800 git-bino Phase 0: BigQuery ordering-key probe - `index` is transaction-scoped
+audit/phase2/git_log.txt:165:e01df93 2026-08-17 21:12:20 +0800 git-bino decide: BigQuery becomes primary source; pre-register ordering-key rule
+audit/phase2/tests/test_cost_model.py:28:    choice from escaping the test.
+audit/phase2/tests/test_leakage.py:26:    _burst_keys,
+audit/phase2/tests/test_leakage.py:75:    before = {k for k in _burst_keys(events) if k <= T_INDEX}
+audit/phase2/tests/test_leakage.py:76:    after = {k for k in _burst_keys(corrupted) if k <= T_INDEX}
+audit/phase2/tests/test_extract_v2.py:278:def test_v2_key_is_the_raw_instruction_pair():
+audit/phase2/tests/test_extract_v2.py:279:    """Fix 2: nothing downstream may key on a packed index."""
+audit/phase2/tests/synthetic.py:209:    def raw_order_key(self) -> tuple:
+audit/phase2/tests/synthetic.py:250:    a slot are ordered but still share the slot a RANGE window keys on.
+audit/phase2/tests/verify_canon_schema.py:87:keys = combined.select(KEY)
+audit/phase2/tests/verify_canon_schema.py:88:n_unique = pa.Table.from_batches(keys.to_batches()).group_by(KEY).aggregate([]).num_rows
+audit/phase2/tests/verify_canon_schema.py:89:check("burst key unique across all chunks", n_unique == total_rows,
+audit/phase2/tests/test_burst.py:14:from src.oh_reference import Event, _burst_keys
+audit/phase2/tests/test_burst.py:27:    assert _burst_keys([ev(10, 3 * SOL, 30)]) == [0]          # exactly 3 qualifies (>=)
+audit/phase2/tests/test_burst.py:28:    assert _burst_keys([ev(10, 2_999_999_999, 30)]) == []     # a lamport short does not
+audit/phase2/tests/test_burst.py:33:    assert _burst_keys([ev(10, 8 * SOL, 80)]) == [0]
+audit/phase2/tests/test_burst.py:34:    assert _burst_keys([ev(10, 7 * SOL, 80)]) == []           # clears 3 SOL, not 0.10x
+```
+
+Илэрсэн мөр (test_log/decisions/docs-ийг хассны дараа): 293
+
+## .env ба нууц утга
+audit/phase2 дотор .env файл: 0
+32+ тэмдэгтийн hex/base58 утга (bundle-ээс бусад):
+093159744502129148923758968675261039491
+093159744502129148923758968675261039493
+11111111111111111111111111111111
+216cd6f656392ba902e37ef67ce932e035213bd6
+6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P
+EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+b2fcb4d15076cb84cba022982c9079b6b3557c169138cef788
+
+DUNE_API_KEY-ийн бодит утга багцад:
+0
+
+## Хэмжээ ба файлын тоо
+нийт хэмжээ:  42M
+нийт файл:   201
+
+  tests: 20 файл, 200K
+  docs: 62 файл, 1.0M
+  src: 50 файл, 556K
+  sql: 56 файл, 572K
+  repo.bundle:  39M
+
+## data/holdout/
+файлын тоо: 0
+багцад holdout: 0
+
+## parquet / ClickHouse дата багцад
+parquet: 0
+npz/npy: 0
+clickhouse зам: 5
+
+## .gitignore-д audit
+0
+0 — audit нь .gitignore-т БАЙХГҮЙ
+
+## Credential-ийн БИЕЧИЛСЭН баталгаа
+
+Grep-ийн 293 таарц нь **бүгд хоргүй** — загварын үгс нь код ба текстэд байгалиасаа тохиолдоно:
+  - `git_log.txt` — commit-ийн ГАРЧИГТ «key», «BigQuery» гэсэн үг (жишээ: "`index` is
+    transaction-scoped", "ordering-key rule")
+  - `tests/*.py`, `src/*.py` — `_burst_keys`, `raw_order_key`, `keys`, `key unique`,
+    `choice from escaping`, `n_unique` гэх мэт **танигчийн нэр**
+  - `src/ingest_dune.py` — `api_key()` нь ФУНКЦИЙН нэр (утга биш); мөр 133-ын тайлбар
+    «...not secrets»
+
+32+ тэмдэгтийн утга **7 ширхэг**, тус бүрийг эх сурвалж хүртэл шалгав:
+
+| утга | юу вэ |
+|---|---|
+| `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P` | pump.fun-ийн **нийтийн** program ID |
+| `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` | USDC-ийн **нийтийн** mint |
+| `11111111111111111111111111111111` | Solana **System Program** ID |
+| `216cd6f656392ba902e37ef67ce932e035213bd6` | `frozen_rule.py`-ийн **git blob hash** (test_log.md:73) |
+| `0931597445021291489237589686752610394…` | `Decimal` утга pytest-ийн гаралтад (docs/audit_findings_tests.md:142) |
+| `b2fcb4d15076cb84cba022982c9079b6b3557c1…` | `src/anchor_rule.py`-ийн **SHA256** (11_anchor_rule.md) |
+
+**Бодит `DUNE_API_KEY` багцад: 0 мөр.** `.env` нь git-д track хийгдээгүй → `repo.bundle` цэвэр.
+
+## «clickhouse» замтай 5 файл — дата эсэх
+
+Бүгд **эх код ба баримт**, дата **биш**:
+`docs/phase0_clickhouse_load.md`, `src/load_clickhouse.py`, `src/load_clickhouse_v2.py`,
+`sql/clickhouse_burst.sql`, `sql/clickhouse_burst_v2.sql`.
+
+## `repo.bundle`-ийн хэмжээ
+
+39 MB. Дийлэнх нь **түүхэн** объектууд: `data/cache/bootstrap_cell.npz` (24 MB, track
+хийгдсэн bootstrap кэш), `audit_phase1.zip` (14 MB), `audit/phase1/repo.bundle` (13.7 MB).
+Багц өөрөө parquet, ClickHouse дата, holdout **агуулаагүй**; тэдгээр нь git түүхэнд ч байхгүй.
+
+## Дүгнэлт
+
+| шалгалт | үр дүн |
+|---|---|
+| Credential задарсан эсэх | **ҮГҮЙ** (293 таарц бүгд танигч/гарчиг; API key 0 мөр) |
+| `.env` багцад | **ҮГҮЙ** (0 файл) |
+| `data/holdout/` | **ХООСОН** (0 файл); багцад 0 зам |
+| parquet / npz / ClickHouse дата | **0 / 0 / 0** |
+| `audit/` нь `.gitignore`-т | **БАЙХГҮЙ** — track хийгдэнэ |
+| Нийт | **201 файл, 42 MB** (үүнээс `repo.bundle` 39 MB) |
