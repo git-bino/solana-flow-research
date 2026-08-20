@@ -3,7 +3,7 @@
   python -m src.capacity
 
 Source: `flow.burst_v2`, chunk 1, the 5,402 rows the frozen rule trades.  No new
-rule is tested here; `src.frozen_rule` is applied exactly as frozen.
+rule is tested here; `src.causal_rule` is applied exactly as frozen.
 
 Concurrency is computed in SLOT space, where the rule already lives: a position
 opens at `burst_slot + L` and closes at `burst_slot + a_exit`.  Wall-clock is
@@ -35,7 +35,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src import config  # noqa: E402
-from src.frozen_rule import DEFAULTS, apply  # noqa: E402
+from src.causal_rule import DEFAULTS, apply  # noqa: E402
 
 Q = float(DEFAULTS["q"])
 L = DEFAULTS["L"]
