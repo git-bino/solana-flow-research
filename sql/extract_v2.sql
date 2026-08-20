@@ -139,9 +139,14 @@ flows AS (
            -- w slots ago.  The minuend is a ROWS frame in full key order, so a
            -- trade later in the same slot is excluded; the subtrahend is a RANGE
            -- frame, so the window edge lands on a slot boundary.
+           -- FIX (2026-08-20 trial): this read `4 PRECEDING`, giving slots
+           -- s-3..s -- four, not five.  A w-slot window (s-w, s] is the prefix
+           -- through s minus the prefix through s-w, so the offset must be w.
+           -- nf5 is the sole input to the burst threshold, so the short window
+           -- silently dropped 2.45% of bursts against v1.
            sum(signed_lam) OVER pfx
              - coalesce(sum(signed_lam) OVER (PARTITION BY mint ORDER BY slot
-                 RANGE BETWEEN UNBOUNDED PRECEDING AND 4 PRECEDING), 0)  AS nf5_lam,
+                 RANGE BETWEEN UNBOUNDED PRECEDING AND 5 PRECEDING), 0)  AS nf5_lam,
            sum(signed_lam) OVER pfx
              - coalesce(sum(signed_lam) OVER (PARTITION BY mint ORDER BY slot
                  RANGE BETWEEN UNBOUNDED PRECEDING AND 3 PRECEDING), 0)  AS nf3_lam,
