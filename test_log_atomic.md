@@ -635,3 +635,32 @@ baseline ба power, label-ийн сэргээлтийн зөрүү, bootstrap-�
 **Шинэ нийлбэр: 490 атомик нэгж.** `feature` +6 (**149**), `structure` +6 (**156**),
 `none` +5 (**91**); `label` **60**, `outcome` **33** хэвээр.
 **`OH_ratio` ↔ `fwd_net_flow` холбоог хэмжсэн нэгж = 0** хэвээр.
+
+## Хавсралт 10 — 2026-08-20-ны trade event-ийн хаягийн талбарын шалгалт
+
+| # | src | Огноо | Phase | Нүд | Датаны царав | Хэмжсэн | Үр дүн | data_looked_at |
+|---|---|---|---|---|---|---|---|---|
+| 491 | 54 | 2026-08-20 | 0 | n/a | Dune metadata | `information_schema.columns` ажиллах эсэх | **УНАНА** — `Unknown type: string`, 0 cr | `none` |
+| 492 | 54 | 2026-08-20 | 0 | n/a | `pump_evt_tradeevent` 1 мөр | багана, тип | **48 багана**; хаяг: `user`, **`evt_tx_signer`**, `evt_*_executing_account`, `creator`, `fee_recipient`, **`shareholders`** | `none` |
+| 493 | 54 | 2026-08-20 | 0 | n/a | `pump_evt_createevent` 1 мөр | багана | **31**; **`bonding_curve`** нь curve-ийн PDA-г шууд өгнө | `none` |
+| 494 | 54 | 2026-08-20 | 0 | n/a | `pump_evt_completeevent` 1 мөр | багана | **19** | `none` |
+| 495 | 54 | 2026-08-20 | 0 | n/a | `pump_call_buy` 1 мөр | account жагсаалт байгаа эсэх | **48 багана**, `account_user` ба **`account_associated_user`** (ATA) байна | `none` |
+| 496 | 54 | 2026-08-20 | 0 | n/a | tradeevent 06-06 | `user` = `evt_tx_signer` | **1,794,687 / 2,307,384 = 77.78%** | `structure` |
+| 497 | 54 | 2026-08-20 | 0 | n/a | мөн тэр | **`user` ≠ signer** | **512,697 = 22.22%** | `structure` |
+| 498 | 54 | 2026-08-20 | 0 | n/a | мөн тэр | CPI-аар чиглүүлэгдсэн, гадаад програм | **1,471,970 = 63.81%**, **171** програм | `structure` |
+| 499 | 54 | 2026-08-20 | 0 | n/a | мөн тэр | >1 `user`-тэй транзакц | **12,791 / 2,271,793 = 0.563%**, бүгд ижил mint | `structure` |
+| 500 | 54 | 2026-08-20 | 0 | n/a | cohort 06-06, `user` түлхүүр | сөрөг (mint, wallet) хос | **16,303 / 525,891 = 3.100%** | `structure` |
+| 501 | 54 | 2026-08-20 | 0 | n/a | мөн тэр, `evt_tx_signer` түлхүүр | сөрөг хос | **27,960 / 526,573 = 5.310%** → signer нь **ДОР** | `structure` |
+| 502 | 54 | 2026-08-20 | 0 | n/a | мөн тэр | сөрөг нэгж / эзэмшил | `user` **9.4243%**, signer 12.0181% | `structure` |
+| 503 | 54 | 2026-08-20 | 0 | n/a | мөн тэр | **сөрөг хосын эхний event нь SELL** | **9,120 / 16,303 = 55.94%** | `structure` |
+| 504 | 54 | 2026-08-20 | 0 | n/a | мөн тэр | сөрөг wallet-ийн хүрсэн mint p50/p90/max | **3.008 / 20.498 / 10,230** (энгийн: 1.080 / 9.218 / 3,701) → **бот, PDA биш** | `structure` |
+| 505 | 54 | 2026-08-20 | 0 | n/a | `oh` CTE-ийн код | сөрөг wallet OH-д ордог эсэх | **ҮГҮЙ** — `units_a > 0`, `units_b > 0` шүүнэ | `none` |
+| 506 | 54 | 2026-08-20 | 0 | n/a | `spl_token_transfers`, cohort 06-06 | action тутмын мөр | `transfer` **4,305** · `mint` 38 · `burn` 32 = **4,375**, 2,048,120 event дээр | `structure` |
+| 507 | 54 | 2026-08-20 | 0 | n/a | мөн тэр | хассан leg-ийн curve биш тал = `user` | **921 / 932 = 98.8%** → хасалт атрибуци эвдээгүй | `structure` |
+| 508 | 54 | 2026-08-20 | 0 | n/a | tradeevent 06-06 | `shareholders` хоосон биш, max урт | **24,709 (1.21%)**, max **2** | `structure` |
+| 509 | 54 | 2026-08-20 | 0 | n/a | мөн тэр | `total_claimed_tokens` / `total_unclaimed_tokens` > 0 | **0 / 0** → токен тараах суваг биш | `structure` |
+| 510 | 54 | 2026-08-20 | 0 | n/a | локал | `pytest -q` | **223 passed, 1 xfailed** | `none` |
+
+**Шинэ нийлбэр: 510 атомик нэгж.** `structure` +14 (**170**), `none` +6 (**97**);
+`feature` **149**, `label` **60**, `outcome` **33** хэвээр.
+**`OH_ratio` ↔ `fwd_net_flow` холбоог хэмжсэн нэгж = 0** хэвээр.
