@@ -1,0 +1,11 @@
+{
+ "all_rows": 7269,
+ "avg_from_len": 43.821295914156,
+ "avg_mint_len": 43.762003026551106,
+ "avg_to_len": 43.95281331682487,
+ "from_null": 0,
+ "kept_rows": 6306,
+ "mints": 71,
+ "pumpfun_rows": 963,
+ "to_null": 0
+}

@@ -11,12 +11,13 @@ assumed:
     Python   WalletStateV2.apply_trade checks `held <= 0` only in the SELL
              branch, so a buy that leaves the wallet still short does not reset.
 
-Neither is "the" rule: spec §1.2 defines a buy-weighted basis and says selling
-leaves it alone, and says nothing about a negative balance -- which cannot occur
-on-curve at all and only appears because SPL transfers are invisible to the
-ledger (2.37% of wallet-token pairs, docs/audit_mechanism_prevalence.md).
-Choosing between them is a spec question, so these tests PIN both behaviours
-rather than assert one is right.
+spec §1.2 defines a buy-weighted basis and says selling leaves it alone, and says
+nothing about a negative balance -- which cannot occur on-curve at all and only
+appears because SPL transfers are invisible to the ledger (2.37% of wallet-token
+pairs, docs/audit_mechanism_prevalence.md).  decisions.md settled it on
+2026-08-20: a buy made while short opens a NEW position, which is what the SQL
+ledger already did, so the Python reference was aligned to it.  The old rule
+survives behind `legacy_negative_held` and is pinned below.
 """
 
 from __future__ import annotations
@@ -29,6 +30,9 @@ from src.oh_reference import THOUSAND, Event, LedgerConfig, WalletStateV2
 
 CFG = LedgerConfig(basis_reset=True, fee_in_basis=True,
                    price_mode="instantaneous", transfer_mode="none")
+LEGACY = LedgerConfig(basis_reset=True, fee_in_basis=True,
+                      price_mode="instantaneous", transfer_mode="none",
+                      legacy_negative_held=True)
 MINT = "M" + "z" * 43
 W = "W" + "y" * 43
 
@@ -61,8 +65,8 @@ def sql_basis(events: list[Event]) -> Decimal | None:
     return Decimal(seg_lam) / (Decimal(seg_units) * THOUSAND) if seg_units else None
 
 
-def py_basis(events: list[Event]) -> Decimal | None:
-    w = WalletStateV2(cfg=CFG)
+def py_basis(events: list[Event], cfg: LedgerConfig = CFG) -> Decimal | None:
+    w = WalletStateV2(cfg=cfg)
     for e in events:
         w.apply_trade(e)
     return w.cost_basis()
@@ -134,36 +138,34 @@ def test_sql_drops_the_buy_made_while_still_short():
     assert sql_basis(_buy_while_short()) == Decimal("4.5")
 
 
-def test_python_keeps_the_buy_made_while_still_short():
-    """MEASURED Python behaviour, pinned.
+def test_legacy_flag_keeps_the_buy_made_while_still_short():
+    """The pre-2026-08-20 Python rule, retained behind `legacy_negative_held`.
 
-    Expectation, hand-computed: the reset fires only on a sell, so event 3
+    Expectation, hand-computed: with the reset firing only on a sell, event 3
     survives alongside event 4: (2e9 + 9e9) / ((5e5 + 2e6) x 1000) = 4.4 SOL/token.
+    Kept so the old numbers stay reproducible, not because they are right.
     """
-    assert py_basis(_buy_while_short()) == Decimal("4.4")
+    assert py_basis(_buy_while_short(), LEGACY) == Decimal("4.4")
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "FINDING (2026-08-20): SQL rolls the basis segment after ANY row leaving "
-    "held <= 0, including a buy that leaves the wallet short, and so discards "
-    "that buy; Python resets only on a sell and keeps it.  4.5 vs 4.4 here, and "
-    "0.914 SOL of oh_a on the real cohort.  spec §1.2 does not decide, so this "
-    "is reported rather than repaired."))
 def test_the_two_ledgers_agree_on_a_buy_made_while_short():
-    """The assertion the parity check needs to pass, stated as the goal."""
+    """Was xfail(strict) on 2026-08-20; passes since the Python rule was aligned.
+
+    decisions.md settled that a buy made while short opens a new position, which
+    is what the SQL ledger already did.  Both now return 4.5 SOL/token.
+    """
     evs = _buy_while_short()
-    assert sql_basis(evs) == py_basis(evs)
+    assert sql_basis(evs) == py_basis(evs) == Decimal("4.5")
 
 
-def test_a_sell_at_the_flat_row_itself_reads_differently():
-    """Second, smaller divergence: the basis AT the flattening row.
+def test_the_basis_at_the_flattening_row_now_agrees_too():
+    """The second, smaller divergence, closed by the same change.
 
-    Expectation, hand-computed: after the sell the balance is 0.  SQL has not
-    rolled the segment yet, so it still reports the old basis of 1 SOL/token;
-    Python has already cleared and reports nothing.  The wallet holds nothing
-    either way, so OH is unaffected -- pinned because it is the same rule seen
-    one row earlier.
+    Expectation, hand-computed: after the sell the balance is 0.  The reset it
+    implies belongs to the NEXT row, so both sides still report the old basis of
+    1 SOL/token at this row.  The wallet holds nothing, so OH is unaffected
+    either way -- pinned because it is the same rule one row earlier.
     """
     evs = [ev(1, True, 1_000_000_000, 1_000_000), ev(2, False, 0, 1_000_000)]
-    assert sql_basis(evs) == Decimal(1)
-    assert py_basis(evs) is None
+    assert sql_basis(evs) == py_basis(evs) == Decimal(1)
+    assert py_basis(evs, LEGACY) is None

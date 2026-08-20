@@ -348,6 +348,11 @@ class LedgerConfig:
     #: "exclude" — variant (a): transferred-in tokens never enter OH
     #: "inherit" — variant (b): transferred-in tokens carry the sender's basis
     transfer_mode: str = "none"
+    #: Keep the pre-2026-08-20 reset rule: fire only on a sell, and fire on the
+    #: row itself rather than the next one.  Retained for regression only —
+    #: decisions.md settled that a buy made while short opens a new position,
+    #: which is what the SQL ledger does.
+    legacy_negative_held: bool = False
 
     def __post_init__(self) -> None:
         if self.price_mode not in ("launch", "instantaneous"):
@@ -405,13 +410,43 @@ class WalletStateV2:
     xf_lam: int = 0             # inherited numerator, "inherit" mode only
     xf_units: int = 0
     went_flat: bool = False
+    #: set when a row leaves the balance non-positive; the reset it implies is
+    #: applied at the START of the next row, not this one.
+    pending_reset: bool = False
 
     def _reset(self) -> None:
         self.buy_lam = self.buy_units = 0
         self.xf_lam = self.xf_units = 0
         self.held_from_buys = self.held_from_xf = 0
 
+    def _roll_segment(self) -> None:
+        """Apply a reset owed by the previous row.
+
+        The SQL ledger counts flat points with `ROWS BETWEEN UNBOUNDED PRECEDING
+        AND 1 PRECEDING`, so a row that drives the balance to zero or below keeps
+        the old basis for itself and the NEXT row starts a fresh segment.
+        """
+        if self.pending_reset:
+            self.pending_reset = False
+            self._reset()
+
+    def _mark_if_flat(self) -> None:
+        """One rule for every row -- buy, sell and transfer alike.
+
+        Before 2026-08-20 this lived in the sell branch only, so a buy that left
+        the wallet still short kept its cost in the basis where the SQL ledger
+        had already closed the position.  decisions.md settled that the SQL
+        reading is the right one; `legacy_negative_held` keeps the old path.
+        """
+        if self.held <= 0:
+            self.went_flat = True
+            if self.cfg.basis_reset:
+                self.pending_reset = True
+
     def apply_trade(self, ev: Event, fee_lam: int = 0) -> None:
+        if self.cfg.legacy_negative_held:
+            return self._apply_trade_legacy(ev, fee_lam)
+        self._roll_segment()
         if ev.is_buy:
             self.buy_lam += ev.lam + (fee_lam if self.cfg.fee_in_basis else 0)
             self.buy_units += ev.units
@@ -419,9 +454,23 @@ class WalletStateV2:
             self.held_from_buys += ev.units
         else:
             self.held -= ev.units
-            taken_from_buys = min(self.held_from_buys, ev.units)
-            self.held_from_buys -= taken_from_buys
-            self.held_from_xf -= ev.units - taken_from_buys
+            taken = min(self.held_from_buys, ev.units)
+            self.held_from_buys -= taken
+            self.held_from_xf -= ev.units - taken
+        self._mark_if_flat()
+
+    def _apply_trade_legacy(self, ev: Event, fee_lam: int = 0) -> None:
+        """Pre-2026-08-20: reset on a sell only, and on the row itself."""
+        if ev.is_buy:
+            self.buy_lam += ev.lam + (fee_lam if self.cfg.fee_in_basis else 0)
+            self.buy_units += ev.units
+            self.held += ev.units
+            self.held_from_buys += ev.units
+        else:
+            self.held -= ev.units
+            taken = min(self.held_from_buys, ev.units)
+            self.held_from_buys -= taken
+            self.held_from_xf -= ev.units - taken
             if self.held <= 0:
                 self.went_flat = True
                 if self.cfg.basis_reset:
@@ -429,21 +478,30 @@ class WalletStateV2:
 
     def apply_transfer_out(self, units: int) -> None:
         """§1.2's sell rule: the balance falls, the basis does not move."""
+        if not self.cfg.legacy_negative_held:
+            self._roll_segment()
         self.held -= units
         taken = min(self.held_from_buys, units)
         self.held_from_buys -= taken
         self.held_from_xf -= units - taken
-        if self.held <= 0:
-            self.went_flat = True
-            if self.cfg.basis_reset:
-                self._reset()
+        if self.cfg.legacy_negative_held:
+            if self.held <= 0:
+                self.went_flat = True
+                if self.cfg.basis_reset:
+                    self._reset()
+        else:
+            self._mark_if_flat()
 
     def apply_transfer_in(self, units: int, sender_basis: Decimal | None) -> None:
+        if not self.cfg.legacy_negative_held:
+            self._roll_segment()
         self.held += units
         self.held_from_xf += units
         if self.cfg.transfer_mode == "inherit" and sender_basis is not None:
             self.xf_lam += int(sender_basis * Decimal(units) * THOUSAND)
             self.xf_units += units
+        if not self.cfg.legacy_negative_held:
+            self._mark_if_flat()
 
     def cost_basis(self) -> Decimal | None:
         """SOL per token over whatever the config says counts."""
