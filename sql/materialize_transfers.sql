@@ -1,3 +1,21 @@
+-- pump.fun bonding-curve SPL token transfers -- research ledger input
+--
+-- PURPOSE.  Wallet-to-wallet SPL transfers on pump.fun bonding-curve tokens.
+-- A cost-basis ledger built from TradeEvent alone is blind to these: tokens move
+-- without a trade, so a sender keeps credit for a balance it no longer holds and
+-- a recipient that sells goes negative.  This query supplies the missing rows.
+--
+-- SCOPE.  Tokens created in [2026-05-10, 2026-07-03) whose createevent declares
+-- virtual_sol_reserves = 30000000000 (the SOL-quote curve).  Transfers up to
+-- 2026-08-15.  Materialised in 9-day slices; one saved query per slice.
+--
+-- EXCLUSION.  A pump.fun trade moves SPL tokens itself, so the curve's own legs
+-- appear in this table and are dropped by outer_executing_account.  Legs invoked
+-- by other AMMs and routers are deliberately KEPT: they are real movements of a
+-- holder's balance away from the curve.
+--
+-- Date: 2026-08-19
+--
 -- Transfer materialisation for extract_v2's `xf` CTE.  WRITTEN, NOT RUN.
 --
 -- Purpose: `tokens_solana.spl_token_transfers` partitions only on `block_date`,

@@ -1,0 +1,50 @@
+[
+ {
+  "all_rows": 144998,
+  "block_date": "2026-05-11",
+  "kept_rows": 114514,
+  "mints": 129
+ },
+ {
+  "all_rows": 22270,
+  "block_date": "2026-05-25",
+  "kept_rows": 4587,
+  "mints": 254
+ },
+ {
+  "all_rows": 47074,
+  "block_date": "2026-06-08",
+  "kept_rows": 18799,
+  "mints": 136
+ },
+ {
+  "all_rows": 19872,
+  "block_date": "2026-06-22",
+  "kept_rows": 18404,
+  "mints": 118
+ },
+ {
+  "all_rows": 7265,
+  "block_date": "2026-07-06",
+  "kept_rows": 7154,
+  "mints": 62
+ },
+ {
+  "all_rows": 8440,
+  "block_date": "2026-07-20",
+  "kept_rows": 8427,
+  "mints": 43
+ },
+ {
+  "all_rows": 2450,
+  "block_date": "2026-08-03",
+  "kept_rows": 2446,
+  "mints": 30
+ },
+ {
+  "all_rows": 1516,
+  "block_date": "2026-08-14",
+  "kept_rows": 1515,
+  "mints": 26
+ }
+]

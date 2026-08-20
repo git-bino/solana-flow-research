@@ -32,8 +32,10 @@ CACHE = Path(__file__).resolve().parent.parent / "data" / "cache"
 RAW = CACHE / "parity_raw_events_200tokens.json"
 SQL = CACHE / "parity_sql_rows_200tokens.json"
 
-OH_PLACES = 12       # OH family
-TRAJ_PLACES = 9      # trajectory elements
+#: Comparisons are RELATIVE since 2026-08-20 -- see src/parity_tolerance.  The
+#: old fixed-decimal bounds demanded more than double precision delivers once a
+#: value grew past 1, which showed up as a 9-ulp "failure" on oh_a.
+from src.parity_tolerance import close  # noqa: E402
 
 
 def _tokens() -> dict[str, list]:
@@ -81,7 +83,7 @@ def test_oh_family_matches_to_12_places(sides, field):
     for key in sorted(set(py) & set(sq)):
         expected = py[key][field]
         got = Decimal(str(sq[key][field]))
-        assert round(expected, OH_PLACES) == round(got, OH_PLACES), f"{field} at {key}"
+        assert close(expected, got), f"{field} at {key}: {expected} vs {got}"
 
 
 def test_trajectory_matches_element_by_element(sides):
@@ -92,8 +94,7 @@ def test_trajectory_matches_element_by_element(sides):
         left, right = py[key]["nf3_traj_75_incl_pre"], sq[key]["nf3_traj_75_incl_pre"]
         assert len(left) == 75 and len(right) == 75, f"length at {key}"
         for a, (expected, got) in enumerate(zip(left, right), start=1):
-            assert round(expected, TRAJ_PLACES) == round(Decimal(str(got)), TRAJ_PLACES), \
-                f"incl_pre a={a} at {key}"
+            assert close(expected, got), f"incl_pre a={a} at {key}"
             compared += 1
     assert compared == 88 * 75
 
@@ -112,7 +113,7 @@ def test_excl_pre_scalars_match(sides, a, column):
     for key in sorted(set(py) & set(sq)):
         expected = py[key]["nf3_traj_75_excl_pre"][a - 1]
         got = Decimal(str(sq[key][column]))
-        assert round(expected, TRAJ_PLACES) == round(got, TRAJ_PLACES), f"{column} at {key}"
+        assert close(expected, got), f"{column} at {key}"
 
 
 def test_excl_pre_tail_is_redundant_with_incl_pre(sides):
