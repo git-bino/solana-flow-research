@@ -1,3 +1,5 @@
+b89f3f9 2026-08-22 01:30:31 +0800 git-bino AUDIT4 FIX: universe now launch-time flag (no effect); fallbacks removed; §3 shows exit-delay survivorship, Lx=0 gives +1.5% only
+103bbbc 2026-08-22 01:26:17 +0800 git-bino audit 4: causal universe, forbid exit fallbacks, measure the exit-delay direction
 a8fdf6d 2026-08-22 01:02:44 +0800 git-bino AUDIT 4: BLOCK. clean universe is whole-life lookahead; final_x fallback returned in 3 forms (14.62% of positions)
 530da67 2026-08-22 00:30:12 +0800 git-bino freeze the quintile boundaries, reconcile to 4.441e-16, and measure the unfilled-exit convention
 a8b2bd2 2026-08-22 00:08:40 +0800 git-bino freeze the B1 rule and assemble the phase 3 audit bundle

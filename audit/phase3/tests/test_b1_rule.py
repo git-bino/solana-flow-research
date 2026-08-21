@@ -43,7 +43,7 @@ def priors_all_won(n=20, day=_dt.date(2026, 5, 10)):
 
 
 def params(**kw):
-    base = dict(b1_q5_lower=0.5, b2_q5_lower=0.5)
+    base = dict(b1_q5_lower=0.5, b2_q5_lower=0.5, exit_window_s=60.0)
     base.update(kw)
     return R.Params(**base)
 
@@ -166,12 +166,14 @@ def test_entry_never_fills_with_fewer_than_three_events_after_the_anchor():
     assert d.traded is False and d.reason == "entry_never_fills"
 
 
-def test_exit_fill_is_the_third_event_after_the_trigger_and_is_the_overshoot():
-    """Trigger at seq 26 (x = 71 >= 60); the fill is seq 29 at 90.0, not 71."""
+def test_exit_fill_is_the_next_event_after_the_trigger_and_is_the_overshoot():
+    """Trigger at seq 26 (x = 71 >= 60); the fill is the NEXT event, seq 27 at
+    80.0 -- the reserve that event left, not the 71 that met the condition."""
     evs, _ = R._fixture()
     d = R.decide("T", evs, DAY, priors_all_won(), params())
     assert d.trigger_seq == 26 and d.trigger_kind == "target"
-    assert d.exit_seq == 29 and d.x_exit == 90.0
+    assert d.exit_seq == 27 and d.x_exit == 80.0
+    assert d.diag["fill_ordinal"] == 1
 
 
 # --- 5. the sixty-second limit -----------------------------------------------
@@ -200,16 +202,17 @@ def test_target_wins_an_exact_tie_with_the_time_limit():
 # --- 6. the arithmetic -------------------------------------------------------
 
 def test_pnl_matches_the_hand_computation_on_the_fixture():
-    """x1 = 44, q = 0.5, x2 = 90.5, k = 3.219e10.
+    """x1 = 44, q = 0.5, exit at the NEXT event (80.0) so x2 = 80.5.
 
         dy   = k*q/(x1*(x1+q)) = 1.6095e10 / 1958   = 8_220_122.574055...
-        out  = dy*x2^2/(k + dy*x2)                  = 2.0442...
-        net  = out*0.9875 - 0.5/0.9875 - 2*0.001    = 1.510358...
+        out  = dy*x2^2/(k + dy*x2)
+        net  = out*0.9875 - 0.5/0.9875 - 2*0.001
     """
     evs, _ = R._fixture()
     d = R.decide("T", evs, DAY, priors_all_won(), params())
+    assert d.x_exit == 80.0
     dy = K * 0.5 / (44.0 * 44.5)
-    out = dy * 90.5 ** 2 / (K + dy * 90.5)
+    out = dy * 80.5 ** 2 / (K + dy * 80.5)
     expect = out * 0.9875 - 0.5 / 0.9875 - 0.002
     assert float(d.pnl_sol) == pytest.approx(expect, rel=1e-12)
     assert float(d.ret) == pytest.approx(expect / 0.5, rel=1e-12)
@@ -274,24 +277,67 @@ def test_the_whole_life_invariant_is_a_diagnostic_and_never_admits_or_rejects():
     assert d.traded is True and d.state.startswith("CLOSED")
 
 
-def test_open_no_fill_has_no_realised_pnl_and_no_fallback_price():
-    """Trigger fires with fewer than three events left -> OPEN, ret is None."""
-    evs = twenty_buyers() + [ev(21, 41.0), ev(22, 42.0), ev(23, 44.0),
-                             ev(24, 61.0), ev(25, 30.8)]
+def test_exit_window_boundary_is_inclusive_and_decides_closed_vs_open():
+    """Trigger at unix 24; the next trade at unix 34 is a 10 s gap.
+
+    W = 10 closes the position, W = 9 leaves it OPEN_LATE_FILL.  Nothing else
+    about the token changes, so W alone moves it between the two states.
+    """
+    evs = twenty_buyers() + [ev(21, 41.0, unix=21), ev(22, 42.0, unix=22),
+                             ev(23, 44.0, unix=23), ev(24, 61.0, unix=24),
+                             ev(25, 62.0, unix=34), ev(26, 63.0, unix=40)]
+    inside = R.decide("T", evs, DAY, priors_all_won(), params(exit_window_s=10.0))
+    outside = R.decide("T", evs, DAY, priors_all_won(), params(exit_window_s=9.0))
+    assert inside.state == "CLOSED_TARGET" and inside.x_exit == 62.0
+    assert inside.diag["fill_gap_s"] == pytest.approx(10.0)
+    assert outside.state == "OPEN_LATE_FILL" and outside.ret is None
+    assert outside.diag["late_gap_s"] == pytest.approx(10.0)
+
+
+def test_open_dead_is_a_six_hour_gap_and_carries_the_last_reserve():
+    """The next trade is 7 h after the trigger: DEAD, not LATE_FILL."""
+    evs = twenty_buyers() + [ev(21, 41.0, unix=21), ev(22, 42.0, unix=22),
+                             ev(23, 44.0, unix=23), ev(24, 61.0, unix=24),
+                             ev(25, 30.8, unix=24 + 7 * 3600)]
     d = R.decide("T", evs, DAY, priors_all_won(), params())
-    assert d.traded is True and d.state == "OPEN_NO_FILL"
+    assert d.traded is True and d.state == "OPEN_DEAD"
     assert d.ret is None and d.pnl_sol is None and d.x_exit is None
     assert d.diag["x_last_over_x_entry"] == pytest.approx(30.8 / 44.0)
 
 
-def test_open_no_trigger_has_no_realised_pnl():
-    """x never reaches 60 and no event is 60 s past the anchor."""
+def test_open_dead_when_no_trade_follows_the_trigger_at_all():
+    evs = twenty_buyers() + [ev(21, 41.0), ev(22, 42.0), ev(23, 44.0),
+                             ev(24, 61.0)]
+    d = R.decide("T", evs, DAY, priors_all_won(), params())
+    assert d.state == "OPEN_DEAD" and d.ret is None
+
+
+def test_window_edge_beats_dead_and_is_never_priced():
+    """A token whose trigger sits inside the last 6 h of data is an artefact."""
+    evs = twenty_buyers() + [ev(21, 41.0, unix=21), ev(22, 42.0, unix=22),
+                             ev(23, 44.0, unix=23), ev(24, 61.0, unix=24)]
+    end_close = R.decide("T", evs, DAY, priors_all_won(),
+                         params(data_end_unix=24 + 3600))
+    end_far = R.decide("T", evs, DAY, priors_all_won(),
+                       params(data_end_unix=24 + 7 * 3600))
+    assert end_close.state == "OPEN_WINDOW_EDGE" and end_close.ret is None
+    assert end_far.state == "OPEN_DEAD"
+
+
+def test_a_token_that_never_triggers_is_classified_off_its_last_trade():
+    """No trigger at all: the reference moment is the last observed trade."""
     evs = twenty_buyers() + [ev(21, 41.0, unix=21), ev(22, 42.0, unix=22),
                              ev(23, 44.0, unix=23), ev(24, 45.0, unix=24),
                              ev(25, 46.0, unix=25)]
     d = R.decide("T", evs, DAY, priors_all_won(), params())
-    assert d.traded is True and d.state == "OPEN_NO_TRIGGER"
-    assert d.ret is None and d.pnl_sol is None
+    assert d.traded is True and d.state == "OPEN_DEAD" and d.ret is None
+    edge = R.decide("T", evs, DAY, priors_all_won(), params(data_end_unix=25 + 60))
+    assert edge.state == "OPEN_WINDOW_EDGE"
+
+
+def test_exit_window_is_required():
+    with pytest.raises(ValueError):
+        R.Params(b1_q5_lower=0.5, b2_q5_lower=0.5)
 
 
 def test_closed_states_are_labelled_by_which_trigger_fired():
@@ -319,8 +365,17 @@ MUTATIONS = {
                                      "if p.wallet != wallet or not (p.first_trade_day <= launch_day):"),
     "entry_delay_two": ("e_idx = _delayed(evs, a_idx, params.entry_delay)",
                         "e_idx = _delayed(evs, a_idx, params.entry_delay - 1)"),
-    "exit_has_no_delay": ("x_idx = _delayed(evs, trig_idx, params.exit_delay)",
-                          "x_idx = trig_idx"),
+    "exit_takes_the_trigger_event_itself": (
+        "x_idx = _delayed(evs, trig_idx, 1)", "x_idx = trig_idx"),
+    "exit_window_boundary_exclusive": (
+        "gap is not None and gap <= params.exit_window_s",
+        "gap is not None and gap < params.exit_window_s"),
+    "dead_and_late_fill_confused": (
+        "elif gap is None or gap >= params.dead_gap_s:",
+        "elif gap is None:"),
+    "window_edge_checked_after_dead": (
+        '        if (params.data_end_unix is not None\n                and params.data_end_unix - ref_unix < params.dead_gap_s):\n            d.state = "OPEN_WINDOW_EDGE"\n        elif gap is None or gap >= params.dead_gap_s:\n            d.state = "OPEN_DEAD"',
+        '        if gap is None or gap >= params.dead_gap_s:\n            d.state = "OPEN_DEAD"\n        elif (params.data_end_unix is not None\n                and params.data_end_unix - ref_unix < params.dead_gap_s):\n            d.state = "OPEN_WINDOW_EDGE"'),
     "time_limit_thirty": ("time_limit_s: float = TIME_LIMIT_S",
                           "time_limit_s: float = 30.0"),
     "fee_charged_once": ("return out * (1 - f) - q / (1 - f)",
@@ -332,11 +387,11 @@ MUTATIONS = {
     # --- audit 4 mutations ---
     "causal_universe_disabled": ("if mayhem_flag:", "if False:"),
     "open_no_fill_gets_entry_price_fallback": (
-        "    if x_idx is None:\n        # OPEN: no realised PnL.  NO fallback price is invented here.\n        d.traded = True",
-        "    if x_idx is None:\n        x_idx = e_idx\n    if False:\n        d.traded = True"),
-    "no_trigger_falls_back_to_last_event": (
-        "    if trig_idx is None:\n        x_idx = None",
-        "    if trig_idx is None:\n        x_idx = max((j for j in range(e_idx + 1, len(evs)) if evs[j].is_trade), default=None)"),
+        "    else:\n        # OPEN: no realised PnL.  NO fallback price is invented here.\n        d.traded = True",
+        "    else:\n        d.x_exit = d.x_entry\n        d.pnl_sol = cost_model.net_pnl(Decimal(str(d.x_entry)), params.q, V=0, W=0, fixed_cost_per_leg=params.fixed_cost_per_leg)\n        d.ret = d.pnl_sol / params.q\n        d.traded = True"),
+    "no_trigger_falls_back_to_entry": (
+        "    if trig_idx is not None:\n        d.trigger_seq = evs[trig_idx].seq",
+        "    if trig_idx is None:\n        trig_idx = e_idx\n    if trig_idx is not None:\n        d.trigger_seq = evs[trig_idx].seq"),
 }
 
 
@@ -379,8 +434,7 @@ def test_mutation_is_caught(name):
     """Each break must change an observable the checks above assert on."""
     M = _mutated(name)
     evs, _ = M._fixture()
-    P = M.Params(b1_q5_lower=0.5, b2_q5_lower=0.5) if name != "time_limit_thirty" \
-        else M.Params(b1_q5_lower=0.5, b2_q5_lower=0.5)
+    P = M.Params(b1_q5_lower=0.5, b2_q5_lower=0.5, exit_window_s=60.0)
     base = R.decide("T", *(lambda e, p: (e, DAY, p))(*R._fixture()), params())
 
     if name == "anchor_off_by_one":
@@ -400,16 +454,44 @@ def test_mutation_is_caught(name):
         return
     if name == "open_no_fill_gets_entry_price_fallback":
         e2 = twenty_buyers() + [ev(21, 41.0), ev(22, 42.0), ev(23, 44.0),
-                                ev(24, 61.0), ev(25, 30.8)]
+                                ev(24, 61.0)]
         assert M.decide("T", e2, DAY, priors_all_won(), P).x_exit is not None
         assert R.decide("T", e2, DAY, priors_all_won(), params()).x_exit is None
         return
-    if name == "no_trigger_falls_back_to_last_event":
+    if name == "exit_window_boundary_exclusive":
+        e2 = twenty_buyers() + [ev(21, 41.0, unix=21), ev(22, 42.0, unix=22),
+                                ev(23, 44.0, unix=23), ev(24, 61.0, unix=24),
+                                ev(25, 62.0, unix=34), ev(26, 63.0, unix=40)]
+        Pw = M.Params(b1_q5_lower=0.5, b2_q5_lower=0.5, exit_window_s=10.0)
+        assert M.decide("T", e2, DAY, priors_all_won(), Pw).state != \
+            R.decide("T", e2, DAY, priors_all_won(), params(exit_window_s=10.0)).state
+        return
+    if name == "dead_and_late_fill_confused":
+        e2 = twenty_buyers() + [ev(21, 41.0, unix=21), ev(22, 42.0, unix=22),
+                                ev(23, 44.0, unix=23), ev(24, 61.0, unix=24),
+                                ev(25, 30.8, unix=24 + 7 * 3600)]
+        assert M.decide("T", e2, DAY, priors_all_won(), P).state != \
+            R.decide("T", e2, DAY, priors_all_won(), params()).state
+        return
+    if name == "window_edge_checked_after_dead":
+        e2 = twenty_buyers() + [ev(21, 41.0, unix=21), ev(22, 42.0, unix=22),
+                                ev(23, 44.0, unix=23), ev(24, 61.0, unix=24)]
+        Pe = M.Params(b1_q5_lower=0.5, b2_q5_lower=0.5, exit_window_s=60.0,
+                      data_end_unix=24 + 3600)
+        assert M.decide("T", e2, DAY, priors_all_won(), Pe).state != \
+            R.decide("T", e2, DAY, priors_all_won(),
+                     params(data_end_unix=24 + 3600)).state
+        return
+    if name == "no_trigger_falls_back_to_entry":
         e2 = twenty_buyers() + [ev(21, 41.0, unix=21), ev(22, 42.0, unix=22),
                                 ev(23, 44.0, unix=23), ev(24, 45.0, unix=24),
                                 ev(25, 46.0, unix=25)]
         assert M.decide("T", e2, DAY, priors_all_won(), P).ret is not None
         assert R.decide("T", e2, DAY, priors_all_won(), params()).ret is None
+        return
+    if name == "exit_takes_the_trigger_event_itself":
+        assert M.decide("T", evs, DAY, priors_all_won(), P).x_exit != \
+            R.decide("T", evs, DAY, priors_all_won(), params()).x_exit
         return
     if name == "ledger_ignores_transfers":
         e2 = twenty_buyers()[:19] + [transfer(20, "w01", "w20", 500.0)]
@@ -428,7 +510,7 @@ def test_mutation_is_caught(name):
     if name == "filter_disabled":
         half = ([M.PriorToken(f"w{i:02d}", _dt.date(2026, 5, 10), None)
                  for i in range(1, 21)])
-        strict = M.Params(b1_q5_lower=0.9, b2_q5_lower=0.9)
+        strict = M.Params(b1_q5_lower=0.9, b2_q5_lower=0.9, exit_window_s=60.0)
         assert M.decide("T", evs, DAY, half, strict).reason != "filtered_out"
         return
     assert (got.entry_seq, got.exit_seq, got.pnl_sol) != \

@@ -7,12 +7,13 @@ Phase 2-ийн багц дахь утгатай харьцуулав:
 
 # Хөлдөөсөн дүрмийн SHA256
 
-src/b1_rule.py  3790c94a4d60a44328340985078955917998d773ac9917f0cd2d9a5a31f6d3d9
+src/b1_rule.py  ee48c8e3637ced673647fa2f4b4f9c85e0ae072ee12af0036b56e0ef08b1a2c3
 
 Түүх:
   6cb82ff255fc9fb1f89e5e2978c29745b00348377d4e9ad7739647a2977288fd  эхний хөлдөөлт
   692bf9031c1e8fb7394cba803aae850005304892cfe5610bf3d21291e3c740f0  хил + last_x
   3790c94a4d60a44328340985078955917998d773ac9917f0cd2d9a5a31f6d3d9  аудит 4-ийн гурван засвар
+  ee48c8e3637ced673647fa2f4b4f9c85e0ae072ee12af0036b56e0ef08b1a2c3  хугацаанд суурилсан гарах дүрэм + OPEN задаргаа
 
 Аудит 4-ийн өөрчлөлт:
   (1) универс -> launch-time `createevent.is_mayhem_mode`;

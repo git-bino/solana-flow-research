@@ -67,11 +67,22 @@ THE RULE
     PRICE P = x^2 / k, fee 1.25% PER SIDE, own price impact on both legs and a
             fixed cost per leg, all through `cost_model.net_pnl`.
 
-    TERMINAL STATE -- NO FALLBACKS, changed 2026-08-21 (audit 4 fix 2)
-      CLOSED_TARGET    x >= 60 fired first and the 3rd event after it exists
-      CLOSED_TIME      the 60 s limit fired first and that 3rd event exists
-      OPEN_NO_FILL     a trigger fired but the 3rd event after it does not exist
-      OPEN_NO_TRIGGER  no trigger ever fired
+    TERMINAL STATE -- NO FALLBACKS
+      CLOSED_TARGET     x >= 60 fired first and the next trade is within W
+      CLOSED_TIME       the 60 s limit fired first and the next trade is within W
+      OPEN_WINDOW_EDGE  the reference moment is within `dead_gap_s` of the end of
+                        the observation window -- an ARTEFACT, never priced
+      OPEN_DEAD         no next trade at all, or the gap to it is >= `dead_gap_s`
+      OPEN_LATE_FILL    a trade did happen, just after the W window
+    Precedence is exactly that order: WINDOW_EDGE is tested BEFORE DEAD so a
+    token cut off by the data edge is never counted as dead.  A token that never
+    triggered is classified by the same test using its LAST trade as the
+    reference moment.
+    MEASURED 2026-08-21 (docs/time_based_exit.md): the CLOSED-only mean FALLS as
+    W grows (subset +0.193643 at W = 1 to +0.077814 at W = 60) while CLOSED rises
+    from 61.12% to 86.55%; and once LATE_FILL is priced at its own later fill,
+    the mean is INVARIANT to W, because CLOSED and LATE_FILL share the same fill
+    event.  All of the W-dependence lives in which positions are DISCARDED.
     An OPEN position has NO realised PnL.  `ret` is None -- not zero, not a
     fee-only round trip, not the last observed reserve.  The earlier
     `unfilled_exit` parameter offered exactly those fallbacks and is REMOVED:
@@ -123,7 +134,7 @@ TIME_LIMIT_S = 60.0
 TARGET_X = 60.0
 ANCHOR_HOLDERS = 20
 ENTRY_DELAY_EVENTS = 3
-EXIT_DELAY_EVENTS = 3
+DEAD_GAP_S = 6 * 60 * 60.0        # 6 hours without a trade = dead
 CLEAN_TOL = 1e-6
 
 
@@ -181,11 +192,19 @@ class Params:
     target_x: float = TARGET_X
     anchor_holders: int = ANCHOR_HOLDERS
     entry_delay: int = ENTRY_DELAY_EVENTS
-    exit_delay: int = EXIT_DELAY_EVENTS
+    exit_window_s: float | None = None
+    dead_gap_s: float = DEAD_GAP_S
+    data_end_unix: float | None = None
     clean_tol: float = CLEAN_TOL
     percentile: str = "nearest_rank"
 
     def __post_init__(self) -> None:
+        if self.exit_window_s is None:
+            raise ValueError(
+                "exit_window_s is required: the exit window decides which "
+                "positions are priced at all, and no default may pick it "
+                "silently (docs/time_based_exit.md measures W in {1,5,15,30,60})"
+            )
         if self.b1_q5_lower is None or self.b2_q5_lower is None:
             raise ValueError(
                 "b1_q5_lower and b2_q5_lower are required: the quintile "
@@ -355,6 +374,7 @@ def decide(token: str, events, launch_day: _dt.date, priors, params: Params,
     d.entry_seq = evs[e_idx].seq
     d.x_entry = evs[e_idx].x
 
+    x_idx = None
     t_idx = g_idx = None
     for j in range(e_idx + 1, len(evs)):
         ev = evs[j]
@@ -374,27 +394,40 @@ def decide(token: str, events, launch_day: _dt.date, priors, params: Params,
         trig_idx, kind = None, "end"
     d.trigger_kind = kind
 
-    if trig_idx is None:
-        x_idx = None
-    else:
+    if trig_idx is not None:
         d.trigger_seq = evs[trig_idx].seq
-        x_idx = _delayed(evs, trig_idx, params.exit_delay)
+        x_idx = _delayed(evs, trig_idx, 1)      # the NEXT trade event
 
-    if x_idx is None:
+    last = max((j for j in range(e_idx + 1, len(evs)) if evs[j].is_trade), default=None)
+    if last is not None:                           # DIAGNOSTIC ONLY unless DEAD
+        d.diag["x_last_over_x_entry"] = evs[last].x / d.x_entry
+
+    ref_unix = evs[trig_idx].unix if trig_idx is not None else (
+        evs[last].unix if last is not None else evs[e_idx].unix)
+    gap = None if (x_idx is None or trig_idx is None) else (
+        evs[x_idx].unix - evs[trig_idx].unix)
+
+    if trig_idx is not None and gap is not None and gap <= params.exit_window_s:
+        x_exit = evs[x_idx].x
+        d.exit_seq = evs[x_idx].seq
+        d.hold_s = evs[x_idx].unix - evs[e_idx].unix
+        d.x_exit = x_exit
+        d.diag["fill_gap_s"] = gap
+        d.diag["fill_ordinal"] = 1        # always 1: events are time-ordered
+        d.state = "CLOSED_TARGET" if kind == "target" else "CLOSED_TIME"
+    else:
         # OPEN: no realised PnL.  NO fallback price is invented here.
         d.traded = True
-        d.state = "OPEN_NO_TRIGGER" if trig_idx is None else "OPEN_NO_FILL"
+        if (params.data_end_unix is not None
+                and params.data_end_unix - ref_unix < params.dead_gap_s):
+            d.state = "OPEN_WINDOW_EDGE"
+        elif gap is None or gap >= params.dead_gap_s:
+            d.state = "OPEN_DEAD"
+        else:
+            d.state = "OPEN_LATE_FILL"
+            d.diag["late_gap_s"] = gap
         d.reason = d.state
-        last = max((j for j in range(e_idx + 1, len(evs)) if evs[j].is_trade),
-                   default=None)
-        if last is not None:                       # DIAGNOSTIC ONLY, never priced
-            d.diag["x_last_over_x_entry"] = evs[last].x / d.x_entry
         return d
-    x_exit = evs[x_idx].x
-    d.exit_seq = evs[x_idx].seq
-    d.hold_s = evs[x_idx].unix - evs[e_idx].unix
-    d.x_exit = x_exit
-    d.state = "CLOSED_TARGET" if kind == "target" else "CLOSED_TIME"
 
     q = params.q
     pnl = cost_model.net_pnl(
@@ -433,7 +466,7 @@ def _fixture():
 
 def main() -> None:
     evs, priors = _fixture()
-    p = Params(b1_q5_lower=0.5, b2_q5_lower=0.5)
+    p = Params(b1_q5_lower=0.5, b2_q5_lower=0.5, exit_window_s=60.0)
     d = decide("FIXTURE", evs, _dt.date(2026, 5, 12), priors, p)
     print(f"anchor seq {d.anchor_seq}  x_a {d.x_a}  b1 {d.b1}  b2 {d.b2}")
     print(f"entry seq {d.entry_seq}  x_entry {d.x_entry}")
