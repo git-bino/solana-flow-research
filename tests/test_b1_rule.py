@@ -380,3 +380,33 @@ def test_mutation_is_caught(name):
         return
     assert (got.entry_seq, got.exit_seq, got.pnl_sol) != \
            (base.entry_seq, base.exit_seq, base.pnl_sol), name
+
+
+# --- 9. the unfilled-exit conventions, measured 2026-08-21 -------------------
+
+def test_unfilled_exit_last_x_prices_at_the_last_observed_reserve():
+    """The third convention: the trader who cannot get out sits in the token.
+
+    Trigger at seq 24 (x = 61 >= 60) with only one trade left, so the 3-event
+    fill never happens.  "entry_price" exits at 44.0; "last_x" exits at the last
+    observed reserve, 35.0, which is a real loss and not a fee-only round trip.
+    """
+    evs = twenty_buyers() + [ev(21, 41.0), ev(22, 42.0), ev(23, 44.0),
+                             ev(24, 61.0), ev(25, 35.0)]
+    a = R.decide("T", evs, DAY, priors_all_won(), params())
+    b = R.decide("T", evs, DAY, priors_all_won(), params(unfilled_exit="last_x"))
+    assert a.diag.get("exit_unfilled") is True and a.x_exit == 44.0
+    assert b.diag.get("exit_unfilled") is True and b.x_exit == 35.0
+    assert float(b.ret) < float(a.ret)
+
+
+def test_unknown_unfilled_exit_is_rejected():
+    with pytest.raises(ValueError):
+        params(unfilled_exit="hold_forever")
+
+
+def test_frozen_boundaries_are_documented_but_not_defaults():
+    """The numbers live in the docstring; passing them is still mandatory."""
+    assert "0.572916667" in R.__doc__ and "1.000000000" in R.__doc__
+    with pytest.raises(ValueError):
+        R.Params()

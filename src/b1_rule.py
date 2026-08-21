@@ -63,15 +63,39 @@ FROZEN CONSTANTS (research lead, 2026-08-21):
     q = 0.5 SOL, fixed_cost_per_leg = 0.001 SOL, T = 60 s, S = infinity,
     G = x >= 60, anchor H20, entry delay 3 events, exit delay 3 events.
 
+FROZEN QUINTILE BOUNDARIES, measured 2026-08-21 on the 21,724-token measurement
+sample (`sql/b1_boundaries.sql`), NEAREST-RANK p80 = sorted[ceil(0.8*n) - 1]:
+
+    b1_q5_lower = 0.572916667        b2_q5_lower = 1.000000000
+
+They are DOCUMENTED here and are still REQUIRED arguments -- they are not
+defaults, because a default would let the rule run on a sample whose boundaries
+were never checked.  Recomputing them on the holdout would be lookahead.
+Measured against the two alternatives: identical to the mid-rank quintile cut
+the analysis used (delta 0.000000000, same 2,571 tokens); `approx_percentile`
+gives 0.571695476 / 0.989173410, six tokens more, x>=60 share 0.0101 pt lower.
+
 TWO CONVENTIONS THAT ARE PARAMETERS, NOT CONSTANTS -- both are stated because
 they change results and neither is self-evident:
 
   `unfilled_exit`  When the trigger fires with fewer than 3 trade events left,
-      the exit never fills.  `sql/b1_grid_econ.sql` priced that as
-      `coalesce(x_ex_raw, x1)` -- exit at the ENTRY reserve, i.e. a fee-only
-      round trip.  `"entry_price"` reproduces that.  `"not_traded"` drops the
-      token instead.  The default reproduces the measured numbers; it is NOT a
-      claim that a round trip actually happened.
+      the exit never fills.  MEASURED 2026-08-21: this is 313 of 2,571 positions
+      = 12.17% of the frozen cell, and the choice DECIDES THE SIGN of trim5:
+
+          convention                 E[ret]      trim5
+          "entry_price"  (A)        +0.062766   +0.050449
+          "last_x"       (B)        +0.004536   -0.012185
+
+      "entry_price" exits at the ENTRY reserve -- a fee-only round trip.  It is
+      what `sql/b1_grid_econ.sql` did and what the published numbers use, and it
+      is the OPTIMISTIC reading: it assumes the position can be closed at the
+      price it was opened at, which is exactly what "the exit never filled"
+      means it could not do.
+      "last_x" exits at the LAST OBSERVED reserve -- the trader who cannot get
+      out sits there while the price falls.
+      "not_traded" drops the token instead.
+      The default reproduces the measured numbers; it is NOT a claim that a
+      round trip actually happened.  See docs/b1_parity.md §4.
 
   `percentile`  B1/B2 are a median and a p90 over ~20 values.  Dune computed
       them with `approx_percentile`, a t-digest.  This module uses NEAREST-RANK
@@ -166,7 +190,7 @@ class Params:
                 "boundaries are cross-sectional and must be frozen from the "
                 "measurement sample, never recomputed on the sample being scored"
             )
-        if self.unfilled_exit not in ("entry_price", "not_traded"):
+        if self.unfilled_exit not in ("entry_price", "last_x", "not_traded"):
             raise ValueError(f"unknown unfilled_exit {self.unfilled_exit!r}")
         if self.percentile != "nearest_rank":
             raise ValueError(f"unknown percentile convention {self.percentile!r}")
@@ -347,9 +371,13 @@ def decide(token: str, events, launch_day: _dt.date, priors, params: Params) -> 
         if params.unfilled_exit == "not_traded":
             d.reason = "exit_never_fills"
             return d
-        x_exit = d.x_entry
+        last = max((j for j in range(e_idx + 1, len(evs)) if evs[j].is_trade),
+                   default=None)
+        x_exit = (d.x_entry if params.unfilled_exit == "entry_price"
+                  else (evs[last].x if last is not None else d.x_entry))
         d.diag["exit_unfilled"] = True
-        d.hold_s = 0.0
+        d.hold_s = 0.0 if params.unfilled_exit == "entry_price" else (
+            evs[last].unix - evs[e_idx].unix if last is not None else 0.0)
     else:
         x_exit = evs[x_idx].x
         d.exit_seq = evs[x_idx].seq

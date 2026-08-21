@@ -1,3 +1,4 @@
+a8b2bd2 2026-08-22 00:08:40 +0800 git-bino freeze the B1 rule and assemble the phase 3 audit bundle
 d34d172 2026-08-21 23:38:14 +0800 git-bino FIRST CANDIDATE TO SURVIVE ALL CHECKS: B1q5xB2q5, +5.61% after trim5, LOO 0/8 negative; cohort-window bias unresolved
 778cd15 2026-08-21 23:31:22 +0800 git-bino audit the win-rate features for lookahead, then price the B1 filter across a 45-cell exit grid
 b2f44b0 2026-08-21 22:23:29 +0800 git-bino B1_wr_med is NOT tautological: x_a +0.61 vs D1 +10.50, 5/5 strata positive, multiplier rises 0.328 -> 0.428
