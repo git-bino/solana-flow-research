@@ -1,0 +1,27 @@
+-- 1 + 2 aggregate, read back from result_flow_pd.  ONE source, GROUPING SETS.
+WITH p AS (SELECT * FROM dune.quantbino1695.result_flow_pd)
+SELECT win, CAST(count(*) AS double) AS n,
+       approx_percentile(min_x_win / x_a, 0.10) AS mn10,
+       approx_percentile(min_x_win / x_a, 0.25) AS mn25,
+       approx_percentile(min_x_win / x_a, 0.50) AS mn50,
+       approx_percentile(min_x_win / x_a, 0.75) AS mn75,
+       approx_percentile(min_x_win / x_a, 0.90) AS mn90,
+       CAST(count_if(t_d5  IS NOT NULL) AS double)/count(*) AS h5,
+       CAST(count_if(t_d10 IS NOT NULL) AS double)/count(*) AS h10,
+       CAST(count_if(t_d15 IS NOT NULL) AS double)/count(*) AS h15,
+       CAST(count_if(t_d20 IS NOT NULL) AS double)/count(*) AS h20,
+       approx_percentile(t_d5,  0.50) AS td5,
+       approx_percentile(t_d10, 0.50) AS td10,
+       approx_percentile(t_d15, 0.50) AS td15,
+       approx_percentile(t_d20, 0.50) AS td20,
+       approx_percentile(t_60_s, 0.50) AS t60_50,
+       approx_percentile(t_60_s, 0.90) AS t60_90,
+       approx_percentile(max_x_win / x_a, 0.50) AS mx50,
+       approx_percentile(max_x_win / x_a, 0.90) AS mx90,
+       approx_percentile(max_x_after / x_a, 0.50) AS mxa50,
+       approx_percentile(max_x_after / x_a, 0.90) AS mxa90,
+       approx_percentile(lifetime_s, 0.50) AS life50,
+       approx_percentile(t_a_s, 0.50) AS ta50,
+       approx_percentile(x_a, 0.50) AS xa50,
+       approx_percentile(CAST(n_win_ev AS double), 0.50) AS nev50
+FROM p GROUP BY GROUPING SETS ((), (win)) ORDER BY win
