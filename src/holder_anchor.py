@@ -43,13 +43,26 @@ def sql_of(path: str, kinds: str | None = None) -> str:
     return s
 
 
-def wait(d: Dune, eid: str, cap: int = 2100) -> dict:
+def wait(d: Dune, eid: str, cap: int = 300) -> dict:
+    """Poll until the execution settles, but CANCEL at `cap` seconds.
+
+    The 2026-08-21 rule, written after a query was left running to Dune's own
+    30-minute limit and billed 179.942 cr for zero rows: a run that has not
+    finished inside the cap is cancelled, not waited out.  The old behaviour
+    (cap 2100 s, return without cancelling) let the execution keep burning.
+    """
     t0 = time.time()
     while time.time() - t0 < cap:
         st = d._request("GET", f"/execution/{eid}/status")
         if st["state"] not in ("QUERY_STATE_EXECUTING", "QUERY_STATE_PENDING"):
             return st
         time.sleep(10)
+    print(f"⏱ {cap} с CAP -- цуцалж байна ({eid})")
+    try:
+        d._request("POST", f"/execution/{eid}/cancel")
+    except Exception as e:                       # cancel is best-effort
+        print(f"cancel алдаа: {e}")
+    time.sleep(5)
     return d._request("GET", f"/execution/{eid}/status")
 
 
