@@ -1,3 +1,5 @@
+a8fdf6d 2026-08-22 01:02:44 +0800 git-bino AUDIT 4: BLOCK. clean universe is whole-life lookahead; final_x fallback returned in 3 forms (14.62% of positions)
+530da67 2026-08-22 00:30:12 +0800 git-bino freeze the quintile boundaries, reconcile to 4.441e-16, and measure the unfilled-exit convention
 a8b2bd2 2026-08-22 00:08:40 +0800 git-bino freeze the B1 rule and assemble the phase 3 audit bundle
 d34d172 2026-08-21 23:38:14 +0800 git-bino FIRST CANDIDATE TO SURVIVE ALL CHECKS: B1q5xB2q5, +5.61% after trim5, LOO 0/8 negative; cohort-window bias unresolved
 778cd15 2026-08-21 23:31:22 +0800 git-bino audit the win-rate features for lookahead, then price the B1 filter across a 45-cell exit grid

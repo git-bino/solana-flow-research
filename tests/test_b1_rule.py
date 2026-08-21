@@ -253,26 +253,60 @@ def test_own_slippage_makes_a_bigger_order_worse_on_the_same_path():
 
 # --- 7. universe and conventions ---------------------------------------------
 
-def test_a_token_off_the_constant_product_invariant_is_out_of_the_universe():
-    evs = twenty_buyers()
-    bad = evs[:-1] + [R.Event(seq=20, unix=20.0, x=40.0, y=K / 40.0 * 1.01,
-                              legs=(("w20", 1000.0),))]
+def test_universe_is_the_launch_time_flag_not_the_whole_life_invariant():
+    """Audit 4 fix 1: admission is `is_mayhem_mode`, known at launch."""
+    evs, _ = R._fixture()
+    ok = R.decide("T", evs, DAY, priors_all_won(), params(), mayhem_flag=False)
+    no = R.decide("T", evs, DAY, priors_all_won(), params(), mayhem_flag=True)
+    assert ok.traded is True
+    assert no.traded is False and no.reason == "mayhem_at_launch"
+
+
+def test_the_whole_life_invariant_is_a_diagnostic_and_never_admits_or_rejects():
+    """A token off the invariant still trades: the invariant is lookahead."""
+    evs = twenty_buyers() + [ev(21, 41.0), ev(22, 42.0), ev(23, 44.0),
+                             ev(24, 71.0), ev(25, 80.0), ev(26, 85.0), ev(27, 90.0)]
+    bad = evs[:19] + [R.Event(seq=20, unix=20.0, x=40.0, y=K / 40.0 * 1.01,
+                              legs=(("w20", 1000.0),))] + evs[20:]
     assert R.is_clean(evs) is True
     assert R.is_clean(bad) is False
     d = R.decide("T", bad, DAY, priors_all_won(), params())
-    assert d.traded is False and d.reason == "not_clean"
+    assert d.traded is True and d.state.startswith("CLOSED")
 
 
-def test_unfilled_exit_conventions_differ_and_both_are_reachable():
-    """Trigger with fewer than three events left: fee-only, or dropped."""
+def test_open_no_fill_has_no_realised_pnl_and_no_fallback_price():
+    """Trigger fires with fewer than three events left -> OPEN, ret is None."""
     evs = twenty_buyers() + [ev(21, 41.0), ev(22, 42.0), ev(23, 44.0),
-                             ev(24, 61.0), ev(25, 62.0)]
-    d1 = R.decide("T", evs, DAY, priors_all_won(), params())
-    assert d1.traded is True and d1.x_exit == d1.x_entry
-    assert d1.diag.get("exit_unfilled") is True and float(d1.ret) < 0
-    d2 = R.decide("T", evs, DAY, priors_all_won(),
-                  params(unfilled_exit="not_traded"))
-    assert d2.traded is False and d2.reason == "exit_never_fills"
+                             ev(24, 61.0), ev(25, 30.8)]
+    d = R.decide("T", evs, DAY, priors_all_won(), params())
+    assert d.traded is True and d.state == "OPEN_NO_FILL"
+    assert d.ret is None and d.pnl_sol is None and d.x_exit is None
+    assert d.diag["x_last_over_x_entry"] == pytest.approx(30.8 / 44.0)
+
+
+def test_open_no_trigger_has_no_realised_pnl():
+    """x never reaches 60 and no event is 60 s past the anchor."""
+    evs = twenty_buyers() + [ev(21, 41.0, unix=21), ev(22, 42.0, unix=22),
+                             ev(23, 44.0, unix=23), ev(24, 45.0, unix=24),
+                             ev(25, 46.0, unix=25)]
+    d = R.decide("T", evs, DAY, priors_all_won(), params())
+    assert d.traded is True and d.state == "OPEN_NO_TRIGGER"
+    assert d.ret is None and d.pnl_sol is None
+
+
+def test_closed_states_are_labelled_by_which_trigger_fired():
+    evs, _ = R._fixture()
+    assert R.decide("T", evs, DAY, priors_all_won(), params()).state == "CLOSED_TARGET"
+    e2 = twenty_buyers()
+    e2 += [ev(20 + i, 41.0 + i * 0.1, unix=20 + i) for i in range(1, 10)]
+    e2 += [ev(80 + i, 45.0 + i, unix=80 + i) for i in range(1, 8)]
+    assert R.decide("T", e2, DAY, priors_all_won(), params()).state == "CLOSED_TIME"
+
+
+def test_unfilled_exit_parameter_is_gone():
+    """The fallback knob was removed, not merely defaulted away."""
+    with pytest.raises(TypeError):
+        R.Params(b1_q5_lower=0.5, b2_q5_lower=0.5, unfilled_exit="entry_price")
 
 
 # --- 8. mutation harness -----------------------------------------------------
@@ -293,9 +327,16 @@ MUTATIONS = {
                          "return out * (1 - f) - q"),
     "filter_disabled": ("if d.b1 < params.b1_q5_lower or d.b2 < params.b2_q5_lower:",
                         "if False:"),
-    "clean_check_disabled": ("if not is_clean(evs, params.clean_tol):", "if False:"),
     "ledger_ignores_transfers": ("for w, du in ev.legs:",
                                  "for w, du in (ev.legs if ev.is_trade else ()):"),
+    # --- audit 4 mutations ---
+    "causal_universe_disabled": ("if mayhem_flag:", "if False:"),
+    "open_no_fill_gets_entry_price_fallback": (
+        "    if x_idx is None:\n        # OPEN: no realised PnL.  NO fallback price is invented here.\n        d.traded = True",
+        "    if x_idx is None:\n        x_idx = e_idx\n    if False:\n        d.traded = True"),
+    "no_trigger_falls_back_to_last_event": (
+        "    if trig_idx is None:\n        x_idx = None",
+        "    if trig_idx is None:\n        x_idx = max((j for j in range(e_idx + 1, len(evs)) if evs[j].is_trade), default=None)"),
 }
 
 
@@ -353,10 +394,22 @@ def test_mutation_is_caught(name):
         exp = R.wallet_win_rate("w01", DAY, pr)
         assert got != exp
         return
-    if name == "clean_check_disabled":
-        bad = evs[:-1] + [M.Event(seq=evs[-1].seq, unix=evs[-1].unix, x=40.0,
-                                  y=K / 40.0 * 1.01, legs=(("w20", 1000.0),))]
-        assert M.decide("T", bad, DAY, priors_all_won(), P).reason != "not_clean"
+    if name == "causal_universe_disabled":
+        assert M.decide("T", evs, DAY, priors_all_won(), P, mayhem_flag=True).traded \
+            != R.decide("T", evs, DAY, priors_all_won(), params(), mayhem_flag=True).traded
+        return
+    if name == "open_no_fill_gets_entry_price_fallback":
+        e2 = twenty_buyers() + [ev(21, 41.0), ev(22, 42.0), ev(23, 44.0),
+                                ev(24, 61.0), ev(25, 30.8)]
+        assert M.decide("T", e2, DAY, priors_all_won(), P).x_exit is not None
+        assert R.decide("T", e2, DAY, priors_all_won(), params()).x_exit is None
+        return
+    if name == "no_trigger_falls_back_to_last_event":
+        e2 = twenty_buyers() + [ev(21, 41.0, unix=21), ev(22, 42.0, unix=22),
+                                ev(23, 44.0, unix=23), ev(24, 45.0, unix=24),
+                                ev(25, 46.0, unix=25)]
+        assert M.decide("T", e2, DAY, priors_all_won(), P).ret is not None
+        assert R.decide("T", e2, DAY, priors_all_won(), params()).ret is None
         return
     if name == "ledger_ignores_transfers":
         e2 = twenty_buyers()[:19] + [transfer(20, "w01", "w20", 500.0)]
@@ -383,27 +436,6 @@ def test_mutation_is_caught(name):
 
 
 # --- 9. the unfilled-exit conventions, measured 2026-08-21 -------------------
-
-def test_unfilled_exit_last_x_prices_at_the_last_observed_reserve():
-    """The third convention: the trader who cannot get out sits in the token.
-
-    Trigger at seq 24 (x = 61 >= 60) with only one trade left, so the 3-event
-    fill never happens.  "entry_price" exits at 44.0; "last_x" exits at the last
-    observed reserve, 35.0, which is a real loss and not a fee-only round trip.
-    """
-    evs = twenty_buyers() + [ev(21, 41.0), ev(22, 42.0), ev(23, 44.0),
-                             ev(24, 61.0), ev(25, 35.0)]
-    a = R.decide("T", evs, DAY, priors_all_won(), params())
-    b = R.decide("T", evs, DAY, priors_all_won(), params(unfilled_exit="last_x"))
-    assert a.diag.get("exit_unfilled") is True and a.x_exit == 44.0
-    assert b.diag.get("exit_unfilled") is True and b.x_exit == 35.0
-    assert float(b.ret) < float(a.ret)
-
-
-def test_unknown_unfilled_exit_is_rejected():
-    with pytest.raises(ValueError):
-        params(unfilled_exit="hold_forever")
-
 
 def test_frozen_boundaries_are_documented_but_not_defaults():
     """The numbers live in the docstring; passing them is still mandatory."""

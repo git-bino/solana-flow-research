@@ -12,10 +12,18 @@ rule specifies its exact path arithmetic.
 
 THE RULE
 --------
-    UNIVERSE
-      clean tokens only: max|x*y/k0 - 1| < 1e-6 over the token's own events,
-      k0 = the product at the token's FIRST event.  A token whose reserves ever
-      leave that invariant is out of the universe -- not a loss, not a zero.
+    UNIVERSE -- CAUSAL, changed 2026-08-21 (audit 4 fix 1)
+      `createevent.is_mayhem_mode = false`, a LAUNCH-TIME observable.
+      The universe WAS `max|x*y/k0 - 1| < 1e-6`, an invariant over the token's
+      WHOLE LIFE: at the anchor nobody can know whether the token will leave the
+      invariant later, so that filter was whole-life lookahead.
+      Measured on the switch: 437 tokens leave the universe (179,725 -> 179,288)
+      and ZERO of them had an H20 anchor, so every anchor-level baseline is
+      unchanged (x>=60 37.44%, x_a p50 43.84, t_60 p50 17.1 s).  The prior-token
+      universe is switched too (sql/causal_universe.sql), which moves
+      b1_q5_lower by +0.000010930 and the subset by +1 token.
+      `is_clean()` is kept below as a DIAGNOSTIC and is NOT consulted for
+      admission; `decide()` never calls it.
 
     ANCHOR
       walk the token's events in `seq` order keeping a TRANSFER-AWARE ledger
@@ -59,6 +67,20 @@ THE RULE
     PRICE P = x^2 / k, fee 1.25% PER SIDE, own price impact on both legs and a
             fixed cost per leg, all through `cost_model.net_pnl`.
 
+    TERMINAL STATE -- NO FALLBACKS, changed 2026-08-21 (audit 4 fix 2)
+      CLOSED_TARGET    x >= 60 fired first and the 3rd event after it exists
+      CLOSED_TIME      the 60 s limit fired first and that 3rd event exists
+      OPEN_NO_FILL     a trigger fired but the 3rd event after it does not exist
+      OPEN_NO_TRIGGER  no trigger ever fired
+    An OPEN position has NO realised PnL.  `ret` is None -- not zero, not a
+    fee-only round trip, not the last observed reserve.  The earlier
+    `unfilled_exit` parameter offered exactly those fallbacks and is REMOVED:
+    "entry_price" priced a position that could not be closed as if it had been
+    closed at its own entry.  Measured at the frozen delay: 13.61% of baseline
+    positions and 12.21% of subset positions are OPEN, and the OPEN rows sit at
+    x_last/x_entry p50 = 0.7068 / 0.7136 -- far below entry.  Any caller that
+    wants a number for them must supply its own assumption, in the open.
+
 FROZEN CONSTANTS (research lead, 2026-08-21):
     q = 0.5 SOL, fixed_cost_per_leg = 0.001 SOL, T = 60 s, S = infinity,
     G = x >= 60, anchor H20, entry delay 3 events, exit delay 3 events.
@@ -77,25 +99,6 @@ gives 0.571695476 / 0.989173410, six tokens more, x>=60 share 0.0101 pt lower.
 
 TWO CONVENTIONS THAT ARE PARAMETERS, NOT CONSTANTS -- both are stated because
 they change results and neither is self-evident:
-
-  `unfilled_exit`  When the trigger fires with fewer than 3 trade events left,
-      the exit never fills.  MEASURED 2026-08-21: this is 313 of 2,571 positions
-      = 12.17% of the frozen cell, and the choice DECIDES THE SIGN of trim5:
-
-          convention                 E[ret]      trim5
-          "entry_price"  (A)        +0.062766   +0.050449
-          "last_x"       (B)        +0.004536   -0.012185
-
-      "entry_price" exits at the ENTRY reserve -- a fee-only round trip.  It is
-      what `sql/b1_grid_econ.sql` did and what the published numbers use, and it
-      is the OPTIMISTIC reading: it assumes the position can be closed at the
-      price it was opened at, which is exactly what "the exit never filled"
-      means it could not do.
-      "last_x" exits at the LAST OBSERVED reserve -- the trader who cannot get
-      out sits there while the price falls.
-      "not_traded" drops the token instead.
-      The default reproduces the measured numbers; it is NOT a claim that a
-      round trip actually happened.  See docs/b1_parity.md §4.
 
   `percentile`  B1/B2 are a median and a p90 over ~20 values.  Dune computed
       them with `approx_percentile`, a t-digest.  This module uses NEAREST-RANK
@@ -180,7 +183,6 @@ class Params:
     entry_delay: int = ENTRY_DELAY_EVENTS
     exit_delay: int = EXIT_DELAY_EVENTS
     clean_tol: float = CLEAN_TOL
-    unfilled_exit: str = "entry_price"
     percentile: str = "nearest_rank"
 
     def __post_init__(self) -> None:
@@ -190,18 +192,22 @@ class Params:
                 "boundaries are cross-sectional and must be frozen from the "
                 "measurement sample, never recomputed on the sample being scored"
             )
-        if self.unfilled_exit not in ("entry_price", "last_x", "not_traded"):
-            raise ValueError(f"unknown unfilled_exit {self.unfilled_exit!r}")
         if self.percentile != "nearest_rank":
             raise ValueError(f"unknown percentile convention {self.percentile!r}")
 
 
 @dataclass
 class Decision:
-    """What the rule did with one token.  `traded` False means no position."""
+    """What the rule did with one token.
+
+    `traded` False means no position was opened at all.  `traded` True with
+    `state` starting OPEN_ means a position was opened and never closed: `ret` is
+    None and MUST NOT be read as zero.
+    """
 
     token: str
     traded: bool = False
+    state: str = ""
     reason: str = ""
     anchor_seq: int | None = None
     anchor_unix: float | None = None
@@ -300,13 +306,21 @@ def _delayed(events, trigger_idx: int, delay: int) -> int | None:
 # --- the rule -----------------------------------------------------------------
 
 
-def decide(token: str, events, launch_day: _dt.date, priors, params: Params) -> Decision:
-    """Apply the frozen rule to one token.  Pure; no I/O, no globals."""
+def decide(token: str, events, launch_day: _dt.date, priors, params: Params,
+           *, mayhem_flag: bool = False) -> Decision:
+    """Apply the frozen rule to one token.  Pure; no I/O, no globals.
+
+    `mayhem_flag` is `createevent.is_mayhem_mode` for THIS token -- a launch-time
+    observable, so it is a property of the token and not a frozen constant.
+    ЭНЭ БОЛ CLAUDE CODE-ИЙН ШИЙДВЭР: it defaults to False (= not flagged), the
+    literal meaning of an absent flag, rather than being required the way the
+    cross-sectional boundaries are.
+    """
     d = Decision(token=token)
     evs = sorted(events, key=lambda e: e.seq)
 
-    if not is_clean(evs, params.clean_tol):
-        d.reason = "not_clean"
+    if mayhem_flag:
+        d.reason = d.state = "mayhem_at_launch"
         return d
 
     found = find_anchor(evs, params.anchor_holders)
@@ -361,28 +375,26 @@ def decide(token: str, events, launch_day: _dt.date, priors, params: Params) -> 
     d.trigger_kind = kind
 
     if trig_idx is None:
-        last = max((j for j in range(e_idx + 1, len(evs)) if evs[j].is_trade), default=None)
-        x_idx = last
+        x_idx = None
     else:
         d.trigger_seq = evs[trig_idx].seq
         x_idx = _delayed(evs, trig_idx, params.exit_delay)
 
     if x_idx is None:
-        if params.unfilled_exit == "not_traded":
-            d.reason = "exit_never_fills"
-            return d
+        # OPEN: no realised PnL.  NO fallback price is invented here.
+        d.traded = True
+        d.state = "OPEN_NO_TRIGGER" if trig_idx is None else "OPEN_NO_FILL"
+        d.reason = d.state
         last = max((j for j in range(e_idx + 1, len(evs)) if evs[j].is_trade),
                    default=None)
-        x_exit = (d.x_entry if params.unfilled_exit == "entry_price"
-                  else (evs[last].x if last is not None else d.x_entry))
-        d.diag["exit_unfilled"] = True
-        d.hold_s = 0.0 if params.unfilled_exit == "entry_price" else (
-            evs[last].unix - evs[e_idx].unix if last is not None else 0.0)
-    else:
-        x_exit = evs[x_idx].x
-        d.exit_seq = evs[x_idx].seq
-        d.hold_s = evs[x_idx].unix - evs[e_idx].unix
+        if last is not None:                       # DIAGNOSTIC ONLY, never priced
+            d.diag["x_last_over_x_entry"] = evs[last].x / d.x_entry
+        return d
+    x_exit = evs[x_idx].x
+    d.exit_seq = evs[x_idx].seq
+    d.hold_s = evs[x_idx].unix - evs[e_idx].unix
     d.x_exit = x_exit
+    d.state = "CLOSED_TARGET" if kind == "target" else "CLOSED_TIME"
 
     q = params.q
     pnl = cost_model.net_pnl(
@@ -393,7 +405,7 @@ def decide(token: str, events, launch_day: _dt.date, priors, params: Params) -> 
     d.pnl_sol = pnl
     d.ret = pnl / q
     d.traded = True
-    d.reason = "traded"
+    d.reason = d.state
     return d
 
 
