@@ -1,0 +1,118 @@
+# Аудитын багцын шалгалт — Phase 3, 2026-08-21 16:04 UTC
+
+## Хэмжээ ба файлын тоо
+нийт хэмжээ:  111M
+нийт файл:   294
+  tests: 21 файл, 220K
+  docs: 77 файл, 1.2M
+  src: 51 файл, 572K
+  sql: 131 файл, 944K
+  repo.bundle: 105M (хоёр хэсэгт хуваагдсан, REPO_BUNDLE_README.md)
+
+## data/holdout/
+локал holdout файлын тоо: 0
+багцад holdout зам: 55
+
+## parquet / npz / ClickHouse дата
+parquet файл: 0
+npz/npy файл: 0
+jsonl файл:   0
+clickhouse замтай файл: 32
+
+## .env ба credential
+.env файл багцад: 0
+DUNE_API_KEY-ийн бодит утга: 0
+32+ тэмдэгтийн hex/base58 өвөрмөц утга: 30
+
+32+ тэмдэгтийн утгууд (эх сурвалж шалгагдсан):
+  093159744502129148923758968675261039491
+  093159744502129148923758968675261039493
+  11111111111111111111111111111111
+  211HXLGaBp4nBK9RwFAYbKhehUgzcy48XzDQ5boBpump
+  216cd6f656392ba902e37ef67ce932e035213bd6
+  2HWFPmP6W38JcKH8HrFguwUo5NETUYVURd3fXrGApump
+  2qBiJYh4MH1rpfGCwBoLiUgLQBZbDkYENNTV9oJXpump
+  2xSaVzV7kkwFxnnEG3qM6Rr3y2SRNHDZi6dZ2jHTpump
+  4r1rPREVvDELvvk36bj78T4QhbSy4FFPUREN81F5hjMi
+  5JWBfKfPhdHvPb14zSzjo5aNqnWYLB3q7gbJbLkNJYEG
+  6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P
+  6cb82ff255fc9fb1f89e5e2978c29745b00348377d4e9ad7739647a2977288fd
+  6cr718rS8g6BQbUtwUsK6uToHVzuuC7LXERYF6supump
+  790ea3dc8f113a2a614c3eb74f9d87dd6f349efe7f0ff23e172c297f68921f8c
+  7a133502cf5b1a0a579cf9605297cc4b33589f46a9b521b67b6cabc83ad517c4
+  82zBd13UhKLJxcakGqrnzKVhFWwpbtj615Y6prW2pump
+  88rSCqxA2WfTQB9CAHjd2yiCfyrpKBaUUiebYCGFZsAB
+  8mtLy7Tdp3kQ5d876m1XVSmJqB343gvu9Du2aJWYzwHW
+  9XupxMDawbPMeCd58EvKs8L2ueHbqQTTpL2UWZBDpump
+  B3S79a7macj2FhbZ7A5DiE4eYJPLhRdKx1t3NXQipump
+
+## .gitignore-д audit
+0
+0
+0 → audit нь .gitignore-т БАЙХГҮЙ, track хийгдэнэ
+
+## Хөлдөөсөн дүрэм
+6cb82ff255fc9fb1f89e5e2978c29745b00348377d4e9ad7739647a2977288fd  audit/phase3/src/b1_rule.py
+репо дахь эх файлтай ижил эсэх:
+  ИЖИЛ
+
+## Credential-ийн БИЕЧИЛСЭН баталгаа
+
+**Бодит `DUNE_API_KEY`: 0 мөр.** `.env` нь git-д track хийгдээгүй → `repo.bundle` цэвэр.
+
+32+ тэмдэгтийн 30 өвөрмөц утга, тус бүрийг эх сурвалж хүртэл шалгав:
+
+| төрөл | тоо | юу вэ |
+|---|---|---|
+| `...pump` төгссөн base58 | 12 | pump.fun-ийн **нийтийн токен mint** — `docs/clean_universe.md`-д жишээ болгон жагсаасан |
+| бусад base58 (44 тэмдэгт) | 6 | **нийтийн хэтэвчийн хаяг** (`docs/drawdown_anatomy.md`-ийн хамгийн том зарагч) ба Solana-ийн program ID |
+| `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P` | 1 | pump.fun-ийн **нийтийн program ID** |
+| `11111111111111111111111111111111` | 1 | Solana **System Program** ID |
+| 64 тэмдэгтийн hex | 4 | SHA256: `spec.md` (7a13…), `b1_rule.py` (6cb8…), `anchor_rule.py` (790e…), git blob (216c…) |
+| Decimal утга | 2 | `docs/audit_findings_tests.md`-ийн pytest гаралт |
+| бусад | 4 | тест fixture ба тайлбар дахь танигч |
+
+Ямар ч API key, secret, token байхгүй.
+
+## `data/holdout` дурдагдсан 55 файл — дата эсэх
+
+**Бүгд ТЕКСТ**: «`data/holdout/` хоосон» гэсэн бүртгэлийн мөрүүд (docs 44, decisions 2,
+spec 1, test_log 1, src 3, sql 1, README/checks 2, git diff 1).
+**Локал `data/holdout/` дотор 0 файл; багцад holdout ДАТА 0.**
+
+## «clickhouse» замтай 32 файл — дата эсэх
+
+Бүгд **эх код ба баримт**, дата **биш**: `src/load_clickhouse*.py`,
+`sql/clickhouse_burst*.sql`, `docs/phase0_clickhouse_load.md` ба тэдгээрийг дурдсан бүртгэл.
+ClickHouse-ийн бодит дата (461 MB, `data/clickhouse/`) багцад **ОРООГҮЙ**.
+
+## `repo.bundle`-ийн хэмжээ — 105 MB
+
+Өмнөх багцуудын bundle нь git-д track хийгдсэн тул шинэ bundle тэднийг агуулна:
+`audit/phase1/repo.bundle` (13.7 MB), `audit/phase2/repo.bundle` (39 MB),
+`data/cache/bootstrap_cell.npz` (24 MB, track хийгдсэн), `audit_phase1.zip` (14 MB).
+Энэ нь **үе шат бүрт хуримтлагдана** — тэмдэглэв, засаагүй.
+Багц өөрөө parquet, ClickHouse дата, holdout **агуулаагүй**.
+
+## Дүгнэлт
+
+| шалгалт | үр дүн |
+|---|---|
+| Credential задарсан эсэх | **ҮГҮЙ** (API key 0 мөр; 30 утга бүгд нийтийн хаяг / SHA / танигч) |
+| `.env` багцад | **ҮГҮЙ** (0 файл) |
+| `data/holdout/` | **ХООСОН** (0 файл); багцад дата 0, зөвхөн 55 текст дурдалт |
+| parquet / npz / jsonl | **0 / 0 / 0** |
+| ClickHouse дата | **0** (32 нь код ба баримт) |
+| `audit/` нь `.gitignore`-т | **БАЙХГҮЙ** — track хийгдэнэ |
+| Хөлдөөсөн дүрмийн SHA256 | репо ↔ багц **ИЖИЛ** |
+| Нийт | **295 файл, 111M** (үүнээс `repo.bundle` 105 MB) |
+
+## `pytest -q` бүтэн гаралт
+```
+.....................x.................................................. [ 21%]
+........................................................................ [ 43%]
+........................................................................ [ 64%]
+........................................................................ [ 86%]
+.............................................                            [100%]
+332 passed, 1 xfailed in 1.44s
+```

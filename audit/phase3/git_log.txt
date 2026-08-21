@@ -1,0 +1,207 @@
+d34d172 2026-08-21 23:38:14 +0800 git-bino FIRST CANDIDATE TO SURVIVE ALL CHECKS: B1q5xB2q5, +5.61% after trim5, LOO 0/8 negative; cohort-window bias unresolved
+778cd15 2026-08-21 23:31:22 +0800 git-bino audit the win-rate features for lookahead, then price the B1 filter across a 45-cell exit grid
+b2f44b0 2026-08-21 22:23:29 +0800 git-bino B1_wr_med is NOT tautological: x_a +0.61 vs D1 +10.50, 5/5 strata positive, multiplier rises 0.328 -> 0.428
+0d89a34 2026-08-21 22:19:20 +0800 git-bino test whether B1_wr_med restates the entry price: Spearman 0.1803 against D1's 0.9196
+35356b1 2026-08-21 22:08:07 +0800 git-bino D1 is tautological (x_a absorbs it); probability x payoff is flat then falls; 82% filter enters at x_a=59.95
+43994fa 2026-08-21 21:52:45 +0800 git-bino test whether D1_sol_in is a restatement of x_a: Spearman 0.9196, ratio AUC 0.4458
+95864e4 2026-08-21 21:38:28 +0800 git-bino D1_sol_in strongest observable (AUC 0.730, q5 68.9%); combined B1q5xD1q5 = 82.08%; three unresolved doubts
+3d02e66 2026-08-21 21:31:41 +0800 git-bino measure anchor-wallet behaviour and anchor structure; cap Dune executions at 5 minutes with cancel
+c2e7797 2026-08-21 21:08:21 +0800 git-bino RULE CHANGE: information_schema banned (180cr timeout); TIMEOUT is billed in full; 5-min cap on all queries
+0eef807 2026-08-21 21:05:20 +0800 git-bino STOP at section 0: budget exceeded 189.086/60 by an information_schema timeout charged in full
+ed08aac 2026-08-21 20:11:19 +0800 git-bino paths differ sharply but TIMING overlaps (winner -10% at 6.3s vs t_60 at 17.9s); best observable is wallet win_rate AUC 0.618
+e4e2495 2026-08-21 20:07:03 +0800 git-bino decompose the 37.44%/62.56% split: winner vs loser path shape, eight-variable discrimination with launch-day cluster CI, stop space
+3623ff2 2026-08-21 18:43:47 +0800 git-bino floor at 30.000 confirmed (clean); buy-the-dip dead (7% vs 37%); holder growth at drop = 8.4x spread but 13.6x duration confound
+a930175 2026-08-21 18:35:46 +0800 git-bino measure holder stability at drawdown, anchor-20 wallet history, post-drawdown re-entry, stop/target sequence (clean universe, H20)
+e69035b 2026-08-21 18:13:13 +0800 git-bino 84/84 negative: exit price turns against you on both sides (target clipped 1.15x, stop overshoots to 0.72x); direction closed
+c52b167 2026-08-21 17:59:29 +0800 git-bino H20 exit-rule grid: all 84 combinations negative, time limit monotone in the same direction everywhere
+ae88f10 2026-08-21 17:35:24 +0800 git-bino mechanism: drop is dispersed LATE sellers, no recovery; 78% of winners win before the drop; creator exit is a NEGATIVE signal
+47f764f 2026-08-21 17:24:04 +0800 git-bino drawdown anatomy on the clean universe: LATE wallets do most of the selling, and price keeps falling after the biggest seller stops
+6586718 2026-08-21 16:25:17 +0800 git-bino decision: holder COUNT is the signal (H20: 33.57% vs 5.79% base, anchor 16s before x=60); distribution adds nothing
+1fa63a1 2026-08-21 16:00:04 +0800 git-bino clean universe: holder-count attainment and distribution against token fate
+10079a4 2026-08-21 15:31:16 +0800 git-bino decision: no discrimination in clean universe (best AUC is tautological x_a; 8/9 features below 0.5)
+e371db0 2026-08-21 08:21:45 +0800 git-bino discrimination inside the clean universe: only x_a clears 0.60, and the pooled AUC was mostly separating clean from dirty
+f507511 2026-08-21 07:57:06 +0800 git-bino DECISIVE: no tail in clean universe (p95 2.015, max 3.8, capped at 115); gini signal reverses; asymmetric payoff absent
+5aa5163 2026-08-21 07:45:14 +0800 git-bino clean-universe baselines: the invariant is stricter than the flag, and the tail collapses
+6d24a26 2026-08-21 07:27:44 +0800 git-bino mayhem identified: AI agent mints 1B extra tokens, random trades, burns at 24h; define clean universe by |xy/k-1|<1e-6
+ef6371e 2026-08-21 07:26:55 +0800 git-bino DEFECT 1 CONFIRMED: 97-100% of top-1% P&L is mayhem; non-mayhem E[ret] -3.0 to -8.6%, 0/8 CIs positive
+3abf7c2 2026-08-21 07:10:16 +0800 git-bino audit 3 defect 1: the edge is mayhem. Defect 2: the final_x fallback is not the edge
+76b3f4c 2026-08-21 06:47:40 +0800 git-bino AUDIT 3: BLOCK. mayhem misclassified (28.74% of cohort, non-constant-product); final_x fallback not causal; freeze hash mismatch
+d16b272 2026-08-21 06:29:05 +0800 git-bino parity passed (4.4e-16); q monotone decreasing (0.05 -> +40.06%); fixed cost per leg, 25/25 positive
+6b70aaa 2026-08-21 06:24:00 +0800 git-bino four fixes before the audit: parity passes, fixed cost is per leg, exact q, fee column corrected
+eab9a8f 2026-08-21 06:07:14 +0800 git-bino rule frozen (anchor_rule.py); fixed cost is PER LEG (halves margin); numeric parity + 3 fixes before audit
+87033a8 2026-08-21 05:57:57 +0800 git-bino freeze the anchor rule, add fixed costs to the model, build the phase-2 audit bundle
+6babc8e 2026-08-21 05:22:50 +0800 git-bino survives realistic execution (24/24 CI positive) but trim5 now 0/24; scale is 3,247/day, 1,465 concurrent, ~2,000 SOL
+ea13268 2026-08-21 05:19:33 +0800 git-bino execution gap: delay leaves the median fill untouched but kills the trimmed mean
+add7511 2026-08-21 05:04:31 +0800 git-bino fill-timing audit: no defect (post-trade reserves, event-level entry and exit); mutation tests confirm
+188664e 2026-08-21 05:01:29 +0800 git-bino fill-timing audit: no defect of the old class in the asymmetric-barrier path
+f586b0b 2026-08-21 04:45:18 +0800 git-bino migration ceiling rejected (3 checks); stop unreachable → hold-to-target; trim10 kills all 24 cells
+8f192d5 2026-08-21 04:40:14 +0800 git-bino three structural checks: migration ceiling NOT confirmed; CI holds, trimmed mean does not
+9c0794e 2026-08-21 04:28:01 +0800 git-bino asymmetric barriers: all 60 cells positive by mean; three structural checks required (migration ceiling, unreachable stop, no CI)
+7689eb9 2026-08-21 04:22:43 +0800 git-bino asymmetric barriers: catch the tail. Overshoot captured on both sides
+82249d7 2026-08-21 04:11:17 +0800 git-bino CORRECTION: all first-passage tests truncated winners at +20% x (= +44% price) while taking full losses
+ff53562 2026-08-21 04:06:36 +0800 git-bino final economics: all executable cells negative; only positive cell is in the <1s (unreachable) bucket
+dda1cae 2026-08-21 04:03:13 +0800 git-bino H3 economics on the corrected price arithmetic; gini t1 levels are negative where executable
+a0afdf1 2026-08-21 03:53:14 +0800 git-bino fix (в) economics (P∝x², censored at observed final_x): -1% not -8.8%; edge is entirely in <1s bucket
+b4328c8 2026-08-21 03:48:05 +0800 git-bino H3: are gini and creator_share the same thing, censoring by tertile, slow-H3 executability
+e5ff095 2026-08-21 03:35:04 +0800 git-bino anchor: earlier is better (timing, not distribution); within H3 distribution gives 4x spread; 44% censoring unresolved
+8d7b45e 2026-08-21 03:29:56 +0800 git-bino holder-count anchors and first passage -- measured; BUDGET OVERRUN 105.946 / 70
+82083af 2026-08-21 02:47:32 +0800 git-bino warn: 74% reach 70 says nothing about ordering (median drops to -84% at some point); anchor moves to holder count
+76d2f9b 2026-08-21 02:42:45 +0800 git-bino A answered: 60 is a crossing point (0.37s above), median peak 88 at +12.5s, ends at 27.7; no parquet export
+c1eb1d1 2026-08-21 02:36:20 +0800 git-bino A: token-level path after x reaches 60 -- measured on Dune, parquet export stopped on price
+702689b 2026-08-21 01:55:45 +0800 git-bino C: proven-token burst still negative (5/5); A blocked — 85.63% of tokens reach 60 outside any burst
+c229d10 2026-08-21 01:47:58 +0800 git-bino A: path after x reaches 60 -- STOPPED, data not local. C: causal rule on depth_x-filtered bursts
+7670769 2026-08-21 01:33:34 +0800 git-bino next: A = x-path after reaching 60; C = burst on proven tokens; B (level-entry) deferred
+31ff144 2026-08-21 01:26:33 +0800 git-bino distribution does NOT survive conditioning on x_growth (asymmetric absorption); x_growth is near-tautological
+bd6d0ee 2026-08-21 01:22:40 +0800 git-bino early identification: T = 5/10/15 s, distribution vs growth stratification, win size
+ab81823 2026-08-21 00:54:10 +0800 git-bino t_60 median 13.3s (race mostly over by 30s); distribution hypothesis CONFIRMED (top3 d1 = 4.3x base); creator history dead
+b77c142 2026-08-21 00:48:21 +0800 git-bino time-to-threshold: median t_60 is 13.3 seconds
+97de254 2026-08-21 00:33:20 +0800 git-bino target is max_x, not rug (99.16% rug = market norm); final question: can we identify growth before it happens
+282f37f 2026-08-21 00:22:36 +0800 git-bino token fate: clean is 0.73% — the registered 5% stop rule fires
+984b128 2026-08-21 00:02:19 +0800 git-bino creator recurrence 82.22% — direction opens; factory vs repeater must be split; §1 to run in cheap form
+7248297 2026-08-20 23:58:55 +0800 git-bino creator recurrence: 82.22% of cohort tokens have a creator with history
+debf431 2026-08-20 23:46:21 +0800 git-bino reframe: from burst lifetime (seconds) to token fate (hours); measure creator recurrence and target base rates
+3308683 2026-08-20 23:42:58 +0800 git-bino lifetime discrimination: AUC 0.577 (p=0.005 selection-adjusted) but economically insufficient; capacity.py tz fix
+0ebdcd8 2026-08-20 23:37:40 +0800 git-bino lifetime discrimination: best AUC 0.5767, selection-corrected p = 0.0050
+b3eb070 2026-08-20 23:20:13 +0800 git-bino entry-at-s: no edge (0/120 CIs above zero); new estimand = discriminating long-lived bursts at s
+5df67ea 2026-08-20 23:12:29 +0800 git-bino entry-at-s estimand: all 11 exit variants negative, 0 of 120 cells above zero
+9738ddd 2026-08-20 22:54:19 +0800 git-bino REFRAME (from the outset): enter at s and predict the 3.2s rise, not enter after it
+bea3fe4 2026-08-20 22:46:46 +0800 git-bino CORRECTED: edge was entirely the entry-reserve bug (+3,278 SOL = 134.7%); expectancy -0.169, all cells negative
+541e076 2026-08-20 22:43:27 +0800 git-bino audit 2 blockers 1-2 fixed: causal clock flips the sign
+e30735a 2026-08-20 22:27:18 +0800 git-bino AUDIT 2: confirmation halted; entry fill uses unreachable price, 1-slot lookahead, freeze void
+620ec26 2026-08-20 22:14:26 +0800 git-bino add capacity measurement and second-audit sequencing rows
+55a4161 2026-08-20 22:03:21 +0800 git-bino audit/phase1: bundle for auditing the search process itself
+f32730c 2026-08-20 21:53:33 +0800 git-bino capacity: 98% of trades on launch day; 535/launch-day; max 2 concurrent; 10 SOL capital; execution-intensive
+c5ad2c7 2026-08-20 21:50:23 +0800 git-bino capacity: 98% of trades land on the token's own launch day
+d973bf9 2026-08-20 21:44:22 +0800 git-bino correct rule statement (strict: no flow break during wait); expectancy bar is zero; pick option (в′) 415cr; capacity still unmeasured
+2ebea4d 2026-08-20 21:40:25 +0800 git-bino freeze the rule, count the confirmation cost
+5d89f72 2026-08-20 21:28:58 +0800 git-bino search halted at 19,627 tests; rule frozen with 1 parameter; §3e and Stage 1 deferred; move to confirmation prep
+71b1719 2026-08-20 21:25:42 +0800 git-bino L_stop dropped (matched sample identical, grid-edge argmax = selection); k=1; final rule has ONE parameter
+85dd34f 2026-08-20 21:20:39 +0800 git-bino L_stop and k curves: L_stop's entire effect is selection
+2bd7c6f 2026-08-20 21:09:11 +0800 git-bino A is inconsequential (2.92% range, CIs overlap): drop age limit, A=75; test L_stop next
+db4cf50 2026-08-20 21:04:36 +0800 git-bino age limit curve: flat across A, with the mechanism redistributing
+fd8955a 2026-08-20 20:53:48 +0800 git-bino exit latency costs only 4.35% (not a speed race); profit concentrates in age-limited exits, not 1-slot
+a7325b8 2026-08-20 20:50:00 +0800 git-bino exit latency: §5.1 asymmetry confirmed in direction, modest in size
+1c18169 2026-08-20 20:39:21 +0800 git-bino Stage 0 checks all PASS (tail robust to 10%, q convex, bootstrap conservative); exit latency untested
+702c53c 2026-08-20 20:35:53 +0800 git-bino stage 0 checks: all three pass
+1bcfd63 2026-08-20 20:25:14 +0800 git-bino Stage 0: CONTINUE — expectancy flips sign, median was wrong metric; 3 mandatory checks before accepting +0.62
+88381fb 2026-08-20 20:19:16 +0800 git-bino stage 0: tail concentration and expectancy — CONTINUE, both kill conditions fail
+995d7ad 2026-08-20 19:58:01 +0800 git-bino REFRAME: identify profitable tickets, not average over all; expectancy replaces median; 5-stage wallet program pre-registered
+2cd14df 2026-08-20 19:39:06 +0800 git-bino blocker closed (selection shift, matched sample correct); q criterion per-unit at pf=0; launch analysis via Dune aggregates
+d38822a 2026-08-20 19:34:37 +0800 git-bino not-traded correction applied; stop rule fired, launch measurement not run
+87c6428 2026-08-20 19:26:45 +0800 git-bino consolidate: §3e sequencing + rug defs; search-01 blocker and null result; f4=f5; posture shift to launch-window edge
+5bc18cb 2026-08-20 19:12:15 +0800 git-bino exploratory search 01: parameter marginals, 10 feature filters, combination
+ff18a89 2026-08-20 19:02:41 +0800 git-bino conventions: q grid from spec, x_end_slot base (3 reasons), exit at a=A; baseline max is selection noise
+3e989bf 2026-08-20 18:59:11 +0800 git-bino fwd_net_ret machine + unconditional baseline: 4,320 parameter sets
+e10f620 2026-08-20 18:43:19 +0800 git-bino MODE SWITCH: confirmatory -> exploratory; search object is fwd_net_ret with exit rules, not raw flow median
+5884cdf 2026-08-20 18:39:41 +0800 git-bino 3c: hazard measures nf3 memory (30.9x jump at a=3); 3c-bis sign flips under size conditioning, effect < 1 slot
+16019bb 2026-08-20 18:34:23 +0800 git-bino hazard 3c/3c-bis: the median death age is the trigger window leaving
+8c71320 2026-08-20 18:22:48 +0800 git-bino pre-register: post-kill(ii) work status — cannot reverse the stop, runs on screening sample
+c29e1f0 2026-08-20 18:21:30 +0800 git-bino SCREENING STOP: d10 median 0.000 vs breakeven 0.657; kill (i) passed, kill (ii) failed; no Plus purchase
+4743810 2026-08-20 18:01:22 +0800 git-bino Phase 3b screening: CI inside the futility band — STOP
+1760545 2026-08-20 17:54:39 +0800 git-bino pre-register three-stage design: chunk 1 = screening, chunks 2-6 = confirmatory; futility rule before looking
+40cefb4 2026-08-20 17:44:19 +0800 git-bino dev extract v2 chunk 1: 133,877 rows, exact v1 match, then STOP
+a18d1df 2026-08-20 17:16:52 +0800 git-bino user-field hypothesis rejected (signer is worse); 56% of negatives start with sell; schema frozen, extract next
+7f25e0c 2026-08-20 17:12:35 +0800 git-bino trade event address fields: `user` is the best key available
+5f84673 2026-08-20 16:47:58 +0800 git-bino resolve ON/OFF (transfers do apply); KILL gate proves negative-held is attribution, not missing data; schema check before extract
+690cfef 2026-08-20 16:22:15 +0800 git-bino transfer ON/OFF: no contradiction — transfers are applied
+159282a 2026-08-20 16:02:27 +0800 git-bino trial: oh_a≈oh_b (13 rows), negative-held unexplained by transfers; ON/OFF byte-identical needs resolving before extract
+6ddbdeb 2026-08-20 15:37:49 +0800 git-bino extract_v2 with transfers on a one-day cohort: 8,697 rows, 86.4 credits
+ff31402 2026-08-20 15:26:05 +0800 git-bino trial: burst set unchanged, oh_a≈oh_b (99% float noise), transfers 0.32% of units; correct negative-held diagnosis
+2a9c606 2026-08-20 15:01:55 +0800 git-bino matviews complete (1.77M rows, 39MB, 140cr); union read costs 0.33cr; defer holdout, one-day trial next
+17da503 2026-08-20 14:58:27 +0800 git-bino transfer matviews: 17 tables, 1,773,265 rows, full 98-day window
+34647fc 2026-08-20 12:47:52 +0800 git-bino rule: never cancel executions (Dune failures cost 0, cancels bill full); raise materialization budget to 400
+3cb369a 2026-08-20 11:13:27 +0800 git-bino matview confirmed as real table; 3 refs = 1 ref (no restructure needed); transfer window is 98 days; cancels are billed
+3429aaf 2026-08-20 10:18:00 +0800 git-bino found: query_<id> is a view; materialized views are the answer (docs.dune.com); revise transfer estimates
+981ba4d 2026-08-20 10:14:08 +0800 git-bino transfer materialization: STOPPED — query_<id> is a view, not a table
+4b3157a 2026-08-20 09:25:13 +0800 git-bino parity closed (oh_a 0/88 semantic); transfer output only 447k rows / 0.071 GB; materialization blocked on query privacy
+76adefa 2026-08-20 09:20:36 +0800 git-bino align the Python ledger to the SQL negative-held rule; size the transfer output
+9c763d5 2026-08-20 09:04:56 +0800 git-bino diagnose: oh_a parity gap is negative-held buy after transfer; decide SQL rule (new position) is correct
+f824662 2026-08-20 09:01:43 +0800 git-bino diagnose the oh_a parity gap: a buy made while short
+86de77c 2026-08-20 08:43:56 +0800 git-bino verify: nf5 fix confirms exact burst-set match; oh_a parity blocker (2 rows); materialization chunked at ~45cr
+645fcbd 2026-08-20 08:35:19 +0800 git-bino fix nf5, reconcile against v1 exactly, run parity, plan materialization
+7689542 2026-08-20 08:07:06 +0800 git-bino found: nf5 computed over 4 slots (burst set shifted); transfers need one-time materialization; defer holdout
+3ba33ac 2026-08-20 04:25:44 +0800 git-bino trial-run extract_v2 on one day: it works, and it has two defects
+fda15de 2026-08-20 03:55:52 +0800 git-bino KILL gate complete (72.5M pairs, 6 windows); E/F close coverage critique; A2 timed out, folded into extract_v2 trial
+34b289e 2026-08-20 03:52:12 +0800 git-bino close D, E and F; A2 fails on Dune's 30-minute limit
+cb49c27 2026-08-20 03:01:55 +0800 git-bino measure: contamination 82.5% on non-mayhem, median flips to -0.049; attribution and test_log atomicity closed
+51249fc 2026-08-20 02:58:41 +0800 git-bino audit clean-up: mayhem split, attribution corrections, atomic log
+9d381ae 2026-08-20 02:31:54 +0800 git-bino validate: cluster bootstrap over-conservative but retained; power confirmed (0.93 at MDE); B=2000 primary
+a46876d 2026-08-20 02:25:27 +0800 git-bino validate the 3b bootstrap by simulation: the CI is conservative, the power holds
+f92d7d9 2026-08-19 18:48:06 +0800 git-bino pre-register: oh_a primary (exact in SQL), oh_b robustness; extract_v2 written (80 cols, 7 fixes)
+3005842 2026-08-19 18:38:29 +0800 git-bino rewrite the extract as v2 with every audit fix
+e48725c 2026-08-19 18:04:00 +0800 git-bino record that the Dune datapoint block is still in force
+fba81bc 2026-08-19 17:55:23 +0800 git-bino measure: SPL transfers available (owner-level) -> ledger path A; drop ix packing for raw tuple; limits blocked run
+f47f68d 2026-08-19 17:49:33 +0800 git-bino probe the re-extract design: transfers and balances exist, packing is clean
+e328996 2026-08-19 15:07:07 +0800 git-bino measure: 81.3% of labels contaminated by same-slot suffix; median flips to -0.121; buy Analyst to close design
+3e7218f 2026-08-19 15:01:02 +0800 git-bino fix the test infrastructure, close the parameter gap, reconstruct per-slot flow
+8296a73 2026-08-19 14:17:49 +0800 git-bino tests: 17 audit-finding regressions (2 xfail strict); F1 finds 6 unexercised generator params; Decimal context leak
+30e22c9 2026-08-19 14:14:49 +0800 git-bino split decisions ledger at 2026-08-19 (knowledge file size limit)
+a55d1aa 2026-08-19 07:09:40 +0800 git-bino extend the synthetic generator and add regression tests for each audit finding
+606f509 2026-08-19 06:54:56 +0800 git-bino Phase 1: exact-path cost model (old formula overstated 1.4-10.9x); criterion (ii) now row-level; power invalidated
+8040be9 2026-08-19 05:58:08 +0800 git-bino Phase 1: derive the cost model from the exact reserve path
+06e272a 2026-08-19 05:28:12 +0800 git-bino measure: mechanism prevalence; revert label boundary to slot s+1 (reachability, not symmetry)
+08b5f5d 2026-08-19 05:11:46 +0800 git-bino measure the prevalence of the three mechanisms the external audit raised
+2418b11 2026-08-19 04:56:17 +0800 git-bino audit: freeze governing spec hash, decisions patch history, repo bundle
+83fc54f 2026-08-19 04:55:58 +0800 git-bino AUDIT: 3b halted; Phase 0 status revoked; BE formula wrong, ix_index packing unproven, OH ledger incomplete
+364ed84 2026-08-19 04:08:44 +0800 git-bino assemble the §8.3 audit bundle for Phase 0 and 3a
+0cbbd09 2026-08-19 03:51:03 +0800 git-bino 3a: power sufficient (MDE 0.126 vs threshold 1.634); lock criterion (ii) V=p75, ceil slots, row-level deciles; audit before 3b
+e301c95 2026-08-19 03:35:55 +0800 git-bino Phase 3a: baseline distribution and power analysis -- power >= 80%
+9f3c4a5 2026-08-19 03:09:30 +0800 git-bino load: 667,809 rows into ClickHouse; mandate UTC in all queries; harden attribution rule
+6c73002 2026-08-19 03:04:28 +0800 git-bino load the 667,809 burst rows into ClickHouse as flow.burst
+c8a35ba 2026-08-19 02:36:54 +0800 git-bino found: P(t) uses launch k; spec 1.1/1.2 conflict; non-mayhem unaffected, mayhem patch deferred to Aug-31
+35c0693 2026-08-18 15:59:02 +0800 git-bino establish the source of k in P(t): launch k, in both SQL and Python
+dd5c323 2026-08-18 15:43:57 +0800 git-bino KILL GATE PASSED: 43.2M pairs, zero mismatches; open question on k for mayhem P(t)
+0a5281d 2026-08-18 15:31:32 +0800 git-bino Phase 0 KILL gate: 1a/1b/1c pass on all four measured windows
+342790d 2026-08-18 15:19:05 +0800 git-bino kill gate: windows 1-2 PASS; select windows 4,6; pre-register 3,5 for Aug-31; log mayhem structure
+3c6cc43 2026-08-18 15:05:36 +0800 git-bino record: dev extract complete (667,809 rows, chunk 7 becomes embargo); canonical schema locked
+3497aa2 2026-08-18 14:59:14 +0800 git-bino complete chunk 6; mechanical rule stops before chunk 7
+aca086d 2026-08-18 14:52:18 +0800 git-bino extract chunk 5, chunk 6 execution, and the canonical extract schema
+0f978ae 2026-08-18 14:16:42 +0800 git-bino record: chunks 3-4 done; correct the phantom execution anomaly; declare canonical schema fix at load
+8556d00 2026-08-18 13:52:27 +0800 git-bino extract chunks 3 and 4, with the mechanical stop rule
+865e403 2026-08-18 04:34:23 +0800 git-bino record: chunk 2 done (305 cr); pre-register sequential stop rule for chunks 3-7
+011c5d0 2026-08-18 04:30:10 +0800 git-bino extract chunk 2: align chunk 1 to the authoritative schema (v3), run chunk 2
+cfab62e 2026-08-18 04:10:05 +0800 git-bino verify: schema reduction proven on 9.77M elements; quote discrimination holds in chunk 2 window
+d0750c0 2026-08-18 04:06:48 +0800 git-bino Phase 0: reduce the excl_pre trajectory to two scalars; move the quote filter to declared x0
+33a13f2 2026-08-18 03:57:05 +0800 git-bino verify: createevent x0 discriminates quote perfectly; chunk 1 clean; correct decoder-lag claim
+140b5ff 2026-08-18 03:53:21 +0800 git-bino Phase 0: createevent's declared initial reserve determines the quote asset
+cb3b03e 2026-08-18 03:46:43 +0800 git-bino verify: quote_mint NULL=SOL passes; pre-register createevent-based quote filter rule
+a7366ce 2026-08-18 03:41:45 +0800 git-bino Phase 0: verify the quote_mint NULL = SOL reading - PASS
+42a15f1 2026-08-18 03:31:42 +0800 git-bino decide: quote_mint NULL=SOL pending verification; excl_pre array reduced to 2 scalars; chunk 1 done
+fded7e2 2026-08-18 03:26:02 +0800 git-bino Phase 0 extract: dev chunk 01 complete - 133,877 burst rows, 481.94 credits
+11aed39 2026-08-18 03:13:54 +0800 git-bino Phase 0 extract chunk 1: stopped - quote_mint is NULL before 2026-05-21
+09c0496 2026-08-18 03:02:51 +0800 git-bino spec v1.3: burst-only architecture, row-level boundaries, N=inf, holdout split at extract
+e3c853a 2026-08-18 02:41:44 +0800 git-bino decide: trajectory boundary is correct as-is; 10-day chunks; pre-register extract execution rule
+8d6def7 2026-08-18 02:38:09 +0800 git-bino Phase 0: align label boundaries to the trigger row; optimise f3 (116s -> 22.1s)
+248dcc6 2026-08-18 02:25:40 +0800 git-bino decide: label boundary is the trigger row (Finding 4 resolved); f3/f8/f9 lookahead fixed
+0c1b57c 2026-08-18 02:19:27 +0800 git-bino Phase 0: fix f3/f8/f9 intra-slot lookahead and the NULL buyer; audit all 35 windows
+b737090 2026-08-18 02:00:05 +0800 git-bino found: intra-slot lookahead in f3/f8/f9 + NULL buyer bug; test suite justified empirically
+a699ab2 2026-08-18 01:56:11 +0800 git-bino Phase 0: write the §8.2 requirement-8 test suite - 94 tests, 91 pass, 3 fail
+0cb9027 2026-08-18 01:29:18 +0800 git-bino decide: incl_pre window convention for nf3 (definitional consistency); log diagnostic exposure
+7e34948 2026-08-18 01:15:53 +0800 git-bino Phase 0: fix nf3's empty-slot defect and recompute the hazard diagnostics
+4ec1c3f 2026-08-18 00:54:49 +0800 git-bino verify: trajectory parity 6600 elements; found nf3 empty-slot defect; log slot conventions
+66b88a6 2026-08-18 00:44:26 +0800 git-bino Phase 0: fix the trajectory index and oh_conc NULL, then re-measure
+b48c135 2026-08-18 00:25:46 +0800 git-bino decide: export trajectory (discipline over credits); slot-index required; fix oh_conc and chunk to 30d
+4173881 2026-08-18 00:16:56 +0800 git-bino Phase 0: full extract-schema inventory and width measurement
+47950e4 2026-08-17 23:57:19 +0800 git-bino decide: OH feasible in Dune SQL (88/88 parity); burst-only architecture; N=5 reverted to inf; holdout split at extract
+85e166f 2026-08-17 23:52:28 +0800 git-bino Phase 0: prove f7 (OH_ratio) is expressible in Dune SQL, matching a Python reference
+2681661 2026-08-17 23:22:37 +0800 git-bino measure: Dune cost function; burst-only export fits Free; pre-register conditional reversal of N=5
+aa178e7 2026-08-17 23:17:20 +0800 git-bino Phase 0: measure Dune's cost structure - scan vs export separated
+fcd13dd 2026-08-17 22:50:40 +0800 git-bino decide: age cutoff N=5 (rule applied, purpose failed); flag scan-vs-export cost split
+4963cc9 2026-08-17 22:39:31 +0800 git-bino Phase 0: burst inventory - age x mayhem cross-tab
+70ba3a8 2026-08-17 22:18:51 +0800 git-bino pre-register: age-cutoff selection rule (before burst inventory)
+f6b5837 2026-08-17 22:14:47 +0800 git-bino decide: BigQuery excluded (no inner instructions in dataset); quarantine balance_changes path
+bc0befd 2026-08-17 22:08:16 +0800 git-bino Phase 0: BigQuery log_messages path probe - the column is empty
+9391ab5 2026-08-17 21:58:28 +0800 git-bino decide: Instructions path rejected (no inner ix); pre-register log_messages thresholds
+25569fb 2026-08-17 21:27:16 +0800 git-bino decide: Instructions path rejected (no inner ix); pre-register log_messages thresholds
+fb91b00 2026-08-17 21:20:43 +0800 git-bino Phase 0: BigQuery ordering-key probe - `index` is transaction-scoped
+e01df93 2026-08-17 21:12:20 +0800 git-bino decide: BigQuery becomes primary source; pre-register ordering-key rule
+b3f9a92 2026-08-17 21:06:47 +0800 git-bino Phase 0.1: BigQuery dry_run measurement of the Solana public dataset
+fbc14ec 2026-08-17 20:19:06 +0800 git-bino spec v1.2: empirical y0 and fees, NET sol_amount, direct reserve read, slot-based windows, mayhem as stratum, Check 1 split into 1a/1b/1c, Codex removed
+bc6e825 2026-08-17 19:26:08 +0800 git-bino Phase 0: four measurements (burst-token share, mayhem timing, reserve series)
+e05eb62 2026-08-17 18:49:21 +0800 git-bino Phase 0.1: size, credit and disk estimate from a 3-day launch cohort
+bca94f9 2026-08-17 17:04:44 +0800 git-bino Phase 0: record pre-registration decisions (window, holdout, ordering, units)
+e5a6bcf 2026-08-17 17:02:06 +0800 git-bino Phase 0: pre-register prompt, curve math, storage and validation scaffolding
+1c61597 2026-08-17 15:47:24 +0800 git-bino add Codex code-review prompt
+dd86d39 2026-08-17 15:45:33 +0800 git-bino spec v1.1: primary cell, two-part Phase 3 kill, power analysis, stratified hazard, exit asymmetry, embargo
+47a930a 2026-08-17 15:43:19 +0800 git-bino add pre-registration discipline files (empty)
+2dfe1ff 2026-08-17 15:43:07 +0800 git-bino spec v1.0: initial pre-registered design
